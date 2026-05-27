@@ -89,10 +89,18 @@ export class GameScene extends Phaser.Scene {
 
     this._grantPreviousAbilities()
 
-    // ── Camera: HK-style — no zoom, smooth follow, world-edge clamping ──
+    // ── Camera: 1 world unit = 1 big pixel, zoom=1.0 always ──
+    // Canvas 320×180 — Scale.FIT multiplies: ×4 on 720p, ×6 on 1080p, ×8 on 2K
+    // this.game.scale = Phaser ScaleManager (≠ this.scale which is sprite Size component)
+    // setMaxSize caps the display size to the resolution from video settings
     this._camTarget = { x: spawn.x, y: spawn.y }
     this.cameras.main.setZoom(1.0)
     this.cameras.main.startFollow(this._camTarget, true, 0.10, 0.10)
+    try {
+      const res = SaveSystem.getSettings().video?.resolution || '1920x1080'
+      const [resW, resH] = res.split('x').map(Number)
+      this.game.scale.setMaxSize(resW || 1920, resH || 1080)
+    } catch (_) { /* ScaleManager API varies by Phaser version — non-critical */ }
 
     // Input keys
     const bindings = SaveSystem.getSettings().keybindings

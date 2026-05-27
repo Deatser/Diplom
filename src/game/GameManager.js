@@ -8,6 +8,12 @@ import { networkClient } from '../network/NetworkClient.js'
 let _game = null
 let _pauseScene = null  // reference to active GameScene for exit button
 
+// Parse "2560x1440" → {w:2560, h:1440}
+function _parseRes(str = '1920x1080') {
+  const [w, h] = (str || '1920x1080').split('x').map(Number)
+  return { w: w || 1920, h: h || 1080 }
+}
+
 // ── Pause menu ──────────────────────────────────────────────────────────────
 export function togglePause(scene) {
   _pauseScene = scene
@@ -108,8 +114,8 @@ export function startGame(levelId, role) {
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
-      width: 1280,   // canvas size — world coords are 320×2000, camera zoom=4 gives pixel art look
-      height: 720,
+      width:  320,  // fixed "big pixel" canvas — Scale.FIT multiplies up per monitor
+      height: 180,  // 2K=×8, 1080p=×6, 720p=×4 | setMaxSize in GameScene caps per settings
     }
   })
 }
