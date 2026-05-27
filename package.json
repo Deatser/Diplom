@@ -1,0 +1,22 @@
+{
+  "name": "left2solve",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"vite --port 8080\" \"node server/index.js\"",
+    "dev:client": "vite --port 8080",
+    "dev:server": "node server/index.js",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pako": "^2.1.0",
+    "phaser": "^3.87.0",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "vite": "^5.4.0"
+  }
+}

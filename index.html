@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Left 2 Solve</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&display=swap"
+			rel="stylesheet"
+		/>
+		<link rel="stylesheet" href="/src/style.css" />
+	</head>
+	<body>
+		<div id="particles"></div>
+		<!-- Phaser canvas container -->
+		<div id="game-container" class="hidden"></div>
+		<!-- In-game HUD -->
+		<div id="hud" class="hidden">
+			<div id="hud-abilities"></div>
+		</div>
+
+		<!-- Пауза (ESC) -->
+		<div id="pause-menu" class="hidden">
+			<div class="pause-backdrop"></div>
+			<div class="pause-container">
+				<h2 class="pause-title">Пауза</h2>
+				<div class="menu-ornament">❖──────────────❖</div>
+				<nav class="menu-nav">
+					<button class="menu-item" id="pause-resume">Продолжить</button>
+					<button class="menu-item" id="pause-settings">Настройки</button>
+					<button class="menu-item" id="pause-exit">Выйти в меню</button>
+				</nav>
+			</div>
+		</div>
+
+		<!-- Главное меню -->
+		<div id="screen-main-menu" class="screen">
+			<div class="menu-container">
+				<div class="menu-title-wrap">
+					<h1 class="menu-title">Left 2 Solve</h1>
+					<div class="menu-ornament">❖──────────────❖</div>
+				</div>
+				<nav class="menu-nav" id="main-nav">
+					<button class="menu-item" data-action="start">Начать игру</button>
+					<button class="menu-item" data-action="settings">Настройки</button>
+					<button class="menu-item" data-action="quit">Выход</button>
+				</nav>
+				<div class="menu-version">v0.1.0</div>
+			</div>
+		</div>
+
+		<!-- Настройки -->
+		<div id="screen-settings" class="screen hidden">
+			<div class="settings-container">
+				<h2 class="settings-title">Настройки</h2>
+				<div class="settings-ornament">❖──────────────❖</div>
+				<nav class="menu-nav" id="settings-nav">
+					<button class="menu-item" data-section="language">Язык</button>
+					<button class="menu-item" data-section="audio">Звук</button>
+					<button class="menu-item" data-section="video">Видео</button>
+					<button class="menu-item" data-section="keyboard">Клавиатура</button>
+				</nav>
+				<div id="settings-panel" class="settings-panel hidden"></div>
+				<button class="menu-item" id="settings-back-btn">Назад</button>
+			</div>
+		</div>
+
+		<!-- Лобби -->
+		<div id="screen-lobby" class="screen hidden">
+			<div class="lobby-wrap">
+				<div class="lobby-left">
+					<h2 class="lobby-panel-title">Доступные серверы</h2>
+					<input
+						type="text"
+						id="server-search"
+						class="lobby-search"
+						placeholder="Поиск по названию..."
+					/>
+					<div id="server-list" class="server-list"></div>
+				</div>
+				<div class="lobby-divider"></div>
+				<div class="lobby-right">
+					<h2 class="lobby-panel-title">Выберите профиль</h2>
+					<div id="save-slots" class="save-slots"></div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Выбор уровня (заглушка) -->
+		<div id="screen-level-select" class="screen hidden">
+			<div class="level-select-container">
+				<div class="server-name-wrap">
+					<span id="server-name-display" class="server-name-text"
+						>Мир000000</span
+					>
+					<button id="rename-btn" class="rename-btn" title="Переименовать">
+						✏️
+					</button>
+					<input
+						type="text"
+						id="rename-input"
+						class="rename-input hidden"
+						maxlength="30"
+					/>
+				</div>
+				<p id="level-select-hint" class="level-select-hint"></p>
+				<div class="players-row">
+					<div class="player-slot host">
+						<div class="player-avatar blue"></div>
+						<span>Хост</span>
+					</div>
+					<div class="player-slot guest" id="guest-slot">
+						<div class="player-avatar orange dim"></div>
+						<span id="guest-label">Ожидание...</span>
+					</div>
+				</div>
+				<div class="levels-grid" id="levels-grid"></div>
+				<button class="start-btn" id="start-game-btn" disabled>Начать</button>
+			</div>
+		</div>
+
+		<script type="module" src="/src/main.js"></script>
+	</body>
+</html>
