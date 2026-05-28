@@ -102,13 +102,14 @@ export function startGame(levelId, role) {
     parent: 'game-container',
     backgroundColor: '#060d1a',
     pixelArt: true,      // crisp nearest-neighbour — no blurring, true pixel art look
-    roundPixels: true,   // snap sprites to whole pixels (eliminates sub-pixel shimmer)
+    // roundPixels убран: на холсте 320×180 при ×8 масштабе разница дробного пикселя = 1/8 экранного px.
+    // pixelArt:true уже даёт чёткость через nearest-neighbour; roundPixels мешал плавной анимации фона.
     physics: {
       default: 'arcade',
       // HK-style snappy gravity (was 900 — too floaty)
       // Gravity in 320×180 space: 1400÷4 = 350
       // (same feel — all physics coords scale with native resolution)
-      arcade: { gravity: { y: 1400 }, debug: false }
+      arcade: { gravity: { y: 900 }, debug: false }
     },
     scene: [PreloadScene, GameScene],
     scale: {
