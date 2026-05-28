@@ -268,7 +268,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		this.body.setVelocity(0, 0)
 
 		// Animation for remote player derived from network velocity
-		if (this._animState !== 'attack') {
+		if (this._animState !== 'attack' && this._animState !== 'dead') {
 			this._setAnim(Math.abs(this._netVelX) > 5 ? 'run' : 'idle')
 		}
 	}
@@ -282,6 +282,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		if (state.flipX !== undefined) this.setFlipX(state.flipX)
 		if (state.anim === 'attack' && this._animState !== 'attack')
 			this.playAttack()
+		if (state.anim === 'dead' && this._animState !== 'dead')
+			this.playDead()
 	}
 
 	getNetworkState() {
@@ -300,7 +302,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 	// Переключает анимацию; атака не прерывается
 	_setAnim(state) {
 		if (this._animState === state) return
-		if (this._animState === 'attack' || this._animState === 'shield') return
+		if (this._animState === 'attack' || this._animState === 'shield' || this._animState === 'dead') return
 		this._animState = state
 		this.play(this._charPrefix + '-' + state)
 	}
@@ -326,7 +328,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 	}
 
 	playDead() {
-		this._animState = 'attack'
+		this._animState = 'dead'
 		const key = this._charPrefix + '-dead'
 		this.play(key)
 		this.once('animationcomplete-' + key, () => {

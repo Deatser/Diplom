@@ -113,11 +113,11 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 4px;
+	gap: 1px;
 	/* no background/border — the PNG ornaments provide the frame */
 }
 .hk-orn {
-	width: 96px;
+	width: 200px;
 	height: auto;
 	display: block;
 	pointer-events: none;
@@ -136,14 +136,15 @@ body {
 }
 .hk-text {
 	font-family: var(--font);
-	font-size: 0.9rem;
+	font-size: 2.2rem;
 	letter-spacing: 0.07em;
 	white-space: nowrap;
 	animation: hkTextIn 0.28s 0.07s ease-out both;
+	font-weight: bold;
 }
 .hud-world-prompt .hk-text {
-	color: #ffee55;
-	text-shadow: 0 0 8px rgba(255, 238, 85, 0.5);
+	color: #eeeeee;
+	text-shadow: 0 0 8px rgba(238, 238, 238, 0.4);
 }
 .hud-world-prompt-test .hk-text {
 	color: #aaffaa;
@@ -844,8 +845,13 @@ select.settings-select {
 	color: rgba(255, 70, 70, 0.9);
 }
 
-.server-item.can-join { cursor: pointer; }
-.server-item:not(.can-join) { opacity: 0.6; cursor: default; }
+.server-item.can-join {
+	cursor: pointer;
+}
+.server-item:not(.can-join) {
+	opacity: 0.6;
+	cursor: default;
+}
 
 .server-empty {
 	flex: 1;

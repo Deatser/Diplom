@@ -29,6 +29,8 @@ class NetworkClient {
     this.socket.on('game:start',        d => { console.log('[nc] game:start', d); this._emit('game:start', d) })
     this.socket.on('game:exit',         () => { console.log('[nc] game:exit'); this._emit('game:exit') })
     this.socket.on('game:levelComplete',() => { console.log('[nc] levelComplete'); this._emit('levelComplete') })
+    this.socket.on('game:playerDied',   () => { console.log('[nc] playerDied');   this._emit('playerDied') })
+    this.socket.on('game:deathRestart', () => { console.log('[nc] deathRestart'); this._emit('deathRestart') })
     this.socket.on('room:levelSelected',d => this._emit('room:levelSelected', d))
   }
 
@@ -47,6 +49,8 @@ class NetworkClient {
   updateRoom(level, playtime) { if (this.roomId) this.socket?.emit('lobby:updateRoom', { roomId: this.roomId, level, playtime }) }
   exitGame()           { if (this.roomId) this.socket?.emit('game:exit', { roomId: this.roomId }) }
   levelComplete()      { if (this.roomId) this.socket?.emit('game:levelComplete', { roomId: this.roomId }) }
+  playerDied()         { if (this.roomId) this.socket?.emit('game:playerDied',    { roomId: this.roomId }) }
+  deathRestart()       { if (this.roomId) this.socket?.emit('game:deathRestart',  { roomId: this.roomId }) }
   getRooms()           { this.socket?.emit('lobby:getRooms') }
   createRoom(name, level = 1, playtime = 0) { this.socket?.emit('lobby:createRoom', { name, level, playtime }) }
   joinRoom(roomId)     { this.socket?.emit('lobby:joinRoom', { roomId }) }

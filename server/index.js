@@ -147,6 +147,16 @@ io.on('connection', socket => {
     socket.to(roomId).emit('game:levelComplete')
   })
 
+  socket.on('game:playerDied', ({ roomId }) => {
+    console.log(`[server] playerDied room=${roomId} from=${socket.id}`)
+    socket.to(roomId).emit('game:playerDied')
+  })
+
+  socket.on('game:deathRestart', ({ roomId }) => {
+    console.log(`[server] deathRestart room=${roomId} from=${socket.id}`)
+    socket.to(roomId).emit('game:deathRestart')
+  })
+
   socket.on('player:input', ({ roomId, input }) => {
     socket.to(roomId).emit('player:input', { playerId: socket.id, input })
   })

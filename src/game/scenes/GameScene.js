@@ -137,6 +137,9 @@ export class GameScene extends Phaser.Scene {
 		this._levelCompleteEl = null // DOM оверлей завершения уровня
 		this._abilityOverlayEl = null // DOM оверлей получения способности
 		this._inputLocked = false // true → updateLocal пропускается (кинематик)
+		this._dying = false          // true → анимация смерти / экран гибели
+		this._deathZones = []        // зоны смерти из Tiled
+		this._deathOverlayEl = null  // DOM оверлей "Вы погибли"
 
 		this._localTrail = null // { g: Graphics, pts: [] } — trail дэша local
 		this._remoteTrail = null // trail дэша remote
@@ -197,6 +200,10 @@ export class GameScene extends Phaser.Scene {
 			this.physics.add.overlap(this.localPlayer, this._exitZone, () =>
 				this._exitLevel(),
 			)
+		}
+
+		for (const dz of this._deathZones) {
+			this.physics.add.overlap(this.localPlayer, dz, () => this._triggerDeath())
 		}
 
 		this._grantPreviousAbilities()
@@ -279,6 +286,28 @@ export class GameScene extends Phaser.Scene {
 			}),
 		)
 
+		this._netUnsub.push(
+			networkClient.on('playerDied', () => {
+				console.log('[GameScene] Partner died')
+				if (!this._dying && !this._exiting) {
+					this._dying = true
+					this._inputLocked = true
+					this._showPartnerDeathScreen()
+				}
+			}),
+		)
+
+		this._netUnsub.push(
+			networkClient.on('deathRestart', () => {
+				console.log('[GameScene] deathRestart received — restarting')
+				this._deathOverlayEl?.remove()
+				this._deathOverlayEl = null
+				this._netUnsub.forEach(u => u())
+				this._netUnsub = []
+				this.scene.restart({ levelId: this.levelId, role: this.role })
+			}),
+		)
+
 		// ── Level transition: host sends game:start, only guest receives it ──
 		// We restart unconditionally — server sends via socket.to() (excludes sender)
 		this._netUnsub.push(
@@ -317,7 +346,7 @@ export class GameScene extends Phaser.Scene {
 			this._orbPromptEl.className = 'hud-world-label hud-world-prompt'
 			this._orbPromptEl.innerHTML = `
 				<img class="hk-orn hk-orn-top" src="/assets/pngfortext/top.png" onerror="this.style.display='none'" />
-				<span class="hk-text">[ЛКМ] Собрать</span>
+				<span class="hk-text">Подобрать</span>
 				<img class="hk-orn hk-orn-bot" src="/assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
 			`
 			this._orbPromptEl.style.display = 'none'
@@ -980,7 +1009,15 @@ export class GameScene extends Phaser.Scene {
 			all: { key: 'ts-all', w: 16, h: 16 },
 			iso: { key: 'ts-iso', w: 16, h: 16 },
 			topdown: { key: 'ts-topdown', w: 16, h: 16 },
-			topdown_jungle: { key: 'ts-topdown_jungle', w: 16, h: 16 },
+			topdown_jungle:               { key: 'ts-topdown_jungle',    w: 16, h: 16 },
+		'violet-industrial-textures': { key: 'ts-violet-industrial',  w: 16, h: 16 },
+		'castle-tileset':             { key: 'ts-castle',             w: 16, h: 16 },
+		snowstone:                    { key: 'ts-snowstone',          w: 16, h: 16 },
+		'dungeon-prison-theme-tilesheet': { key: 'ts-dungeon-prison', w: 16, h: 16 },
+		'Lined Brick':                { key: 'ts-lined-brick',        w: 16, h: 16 },
+		tileset_update:               { key: 'ts-tileset-update',     w: 16, h: 16 },
+		'sci-fi-tileset':             { key: 'ts-sci-fi',             w: 16, h: 16 },
+		spike:                        { key: 'ts-spike',              w: 16, h: 16 },
 		}
 
 		const tilesets = []
@@ -1018,7 +1055,7 @@ export class GameScene extends Phaser.Scene {
 		if (tilesets.length > 0) {
 			for (const layerData of map.layers) {
 				const name = layerData.name
-				const depth = name === 'back' ? 1 : name === 'cloud' ? 2 : 4
+				const depth = name === 'back2' ? 0 : name === 'back' ? 1 : name === 'cloud' ? 2 : name === 'spike' ? 3 : 4
 				try {
 					// scrollFactor=1 (дефолт) — тайлы рендерятся на своих мировых позициях.
 					// Параллакс для фонов делается через Oblako-объекты, не через tile-слои.
@@ -1224,6 +1261,13 @@ export class GameScene extends Phaser.Scene {
 						.refreshBody()
 					this.doorBody = this.door
 					break
+				case 'death': {
+					const dz = this.add.zone(cx, cy, width || 16, height || 16)
+					this.physics.world.enable(dz)
+					dz.body.allowGravity = false
+					this._deathZones.push(dz)
+					break
+				}
 				case 'sign': {
 					const text = prop('text') || ''
 					this._makeSign(x, y, text)
@@ -1360,6 +1404,129 @@ export class GameScene extends Phaser.Scene {
 		this._exitZone = zone
 	}
 
+	_triggerDeath() {
+		if (this._dying || this._exiting || this._inputLocked) return
+		this._dying = true
+		this._inputLocked = true
+
+		this.localPlayer.body.setVelocity(0, 0)
+		this.localPlayer.body.setAllowGravity(false)
+		this.localPlayer.playDead()
+
+		// После анимации: подождать 400ms, показать экран И уведомить партнёра одновременно
+		const deadKey = this.localPlayer._charPrefix + '-dead'
+		this.localPlayer.once('animationcomplete-' + deadKey, () => {
+			this.time.delayedCall(400, () => {
+				networkClient.playerDied() // отправляем партнёру в тот же момент что и показываем себе
+				this._showDeathScreen()
+			})
+		})
+	}
+
+	_showDeathScreen() {
+		const el = document.createElement('div')
+		el.className = 'game-fullscreen-overlay'
+
+		const title = document.createElement('div')
+		title.className = 'game-overlay-title'
+		title.textContent = 'ВЫ ПОГИБЛИ'
+		title.style.color = '#cc3333'
+		title.style.textShadow = '0 0 24px #cc3333'
+		el.appendChild(title)
+
+		if (this.role === 'host') {
+			const restartBtn = document.createElement('button')
+			restartBtn.className = 'game-btn game-btn-primary'
+			restartBtn.style.color = '#ff6666'
+			restartBtn.style.borderColor = 'rgba(255,80,80,0.45)'
+			restartBtn.textContent = '↺  Заново'
+			restartBtn.addEventListener('click', () => {
+				el.remove()
+				this._deathOverlayEl = null
+				networkClient.deathRestart()
+				this._netUnsub.forEach(u => u())
+				this._netUnsub = []
+				this.scene.restart({ levelId: this.levelId, role: 'host' })
+			})
+
+			const menuBtn = document.createElement('button')
+			menuBtn.className = 'game-btn'
+			menuBtn.textContent = '◀  Выйти в меню'
+			menuBtn.addEventListener('click', () => {
+				el.remove()
+				this._deathOverlayEl = null
+				networkClient.exitGame()
+				this._netUnsub.forEach(u => u())
+				this._netUnsub = []
+				this.scene.stop()
+				exitToLevelSelect()
+			})
+
+			el.appendChild(restartBtn)
+			el.appendChild(menuBtn)
+		} else {
+			const waiting = document.createElement('div')
+			waiting.className = 'game-overlay-subtitle'
+			waiting.style.color = 'rgba(255,255,255,0.45)'
+			waiting.textContent = 'Ожидание хоста…'
+			el.appendChild(waiting)
+		}
+
+		document.getElementById('hud-overlay').appendChild(el)
+		this._deathOverlayEl = el
+	}
+
+	_showPartnerDeathScreen() {
+		const el = document.createElement('div')
+		el.className = 'game-fullscreen-overlay'
+
+		const title = document.createElement('div')
+		title.className = 'game-overlay-title'
+		title.textContent = 'Второй игрок погиб'
+		title.style.color = '#cc3333'
+		title.style.textShadow = '0 0 24px #cc3333'
+		el.appendChild(title)
+
+		if (this.role === 'host') {
+			const restartBtn = document.createElement('button')
+			restartBtn.className = 'game-btn game-btn-primary'
+			restartBtn.style.color = '#ff6666'
+			restartBtn.style.borderColor = 'rgba(255,80,80,0.45)'
+			restartBtn.textContent = '↺  Заново'
+			restartBtn.addEventListener('click', () => {
+				el.remove()
+				this._deathOverlayEl = null
+				networkClient.deathRestart()
+				this._netUnsub.forEach(u => u())
+				this._netUnsub = []
+				this.scene.restart({ levelId: this.levelId, role: 'host' })
+			})
+			const menuBtn = document.createElement('button')
+			menuBtn.className = 'game-btn'
+			menuBtn.textContent = '◀  Выйти в меню'
+			menuBtn.addEventListener('click', () => {
+				el.remove()
+				this._deathOverlayEl = null
+				networkClient.exitGame()
+				this._netUnsub.forEach(u => u())
+				this._netUnsub = []
+				this.scene.stop()
+				exitToLevelSelect()
+			})
+			el.appendChild(restartBtn)
+			el.appendChild(menuBtn)
+		} else {
+			const waiting = document.createElement('div')
+			waiting.className = 'game-overlay-subtitle'
+			waiting.style.color = 'rgba(255,255,255,0.45)'
+			waiting.textContent = 'Ожидание хоста…'
+			el.appendChild(waiting)
+		}
+
+		document.getElementById('hud-overlay').appendChild(el)
+		this._deathOverlayEl = el
+	}
+
 	_requestExit() {
 		if (this._exiting) return
 		this._gamePaused = false
@@ -1409,7 +1576,7 @@ export class GameScene extends Phaser.Scene {
 				nextBtn.className = 'game-btn game-btn-primary'
 				nextBtn.textContent = `▶  Уровень ${nextLevel}`
 				nextBtn.addEventListener('click', () => {
-					el.remove()  // убрать оверлей немедленно — не ждать shutdown()
+					el.remove() // убрать оверлей немедленно — не ждать shutdown()
 					this._levelCompleteEl = null
 					console.log('[GameScene] Host → next level', nextLevel)
 					saveSessionPlaytime()
@@ -1513,8 +1680,8 @@ export class GameScene extends Phaser.Scene {
 		this._levelCompleteEl?.remove()
 		this._abilityOverlayEl?.remove()
 		this._orbPromptEl?.remove()
-		for (const lbl of this._worldLabels)  lbl.el?.remove()
-		for (const torb of this._testOrbs)    torb.promptEl?.remove()
+		for (const lbl of this._worldLabels) lbl.el?.remove()
+		for (const torb of this._testOrbs) torb.promptEl?.remove()
 
 		// Сбросить контейнеры полностью на случай если что-то пропустили
 		const hp = document.getElementById('hud-prompts')
@@ -1522,11 +1689,14 @@ export class GameScene extends Phaser.Scene {
 		if (hp) hp.innerHTML = ''
 		if (ho) ho.innerHTML = ''
 
-		this._worldLabels      = []
-		this._orbPromptEl      = null
+		this._worldLabels = []
+		this._orbPromptEl = null
 		this._abilityOverlayEl = null
-		this._levelCompleteEl  = null
-		this._inputLocked      = false
+		this._levelCompleteEl = null
+		this._deathOverlayEl?.remove()
+		this._deathOverlayEl = null
+		this._inputLocked = false
+		this._dying = false
 	}
 
 	_exitGame(completed = false, notify = true) {

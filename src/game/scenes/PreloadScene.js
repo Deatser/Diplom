@@ -45,7 +45,15 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image('ts-all',            '/levels/all.png')
     this.load.image('ts-iso',            '/levels/iso.png')
     this.load.image('ts-topdown',        '/levels/topdown.png')
-    this.load.image('ts-topdown_jungle', '/levels/topdown_jungle.png')
+    this.load.image('ts-topdown_jungle',     '/levels/topdown_jungle.png')
+    this.load.image('ts-violet-industrial',  '/levels/violet-industrial-textures.png')
+    this.load.image('ts-castle',             '/levels/castle-tileset.png')
+    this.load.image('ts-snowstone',          '/levels/snowstone.png')
+    this.load.image('ts-dungeon-prison',     '/levels/dungeon-prison-theme-tilesheet.png')
+    this.load.image('ts-lined-brick',        '/levels/Lined Brick.png')
+    this.load.image('ts-tileset-update',     '/levels/tileset_update.png')
+    this.load.image('ts-sci-fi',             '/levels/sci-fi-tileset.png')
+    this.load.image('ts-spike',              '/levels/spike.png')
     this.load.image('bg-tile', '/assets/bg-tile.png')
 
     // ── Player spritesheets 512×512, кадр 64×64 (8 cols × 8 rows) ────────────
