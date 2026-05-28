@@ -124,6 +124,11 @@ export function startGame(levelId, role) {
 export function exitToLevelSelect() {
   document.getElementById('game-container').classList.add('hidden')
   document.getElementById('hud').classList.add('hidden')
+  // Гарантированно очистить HUD-оверлеи — на случай если shutdown() не успел
+  const hp = document.getElementById('hud-prompts')
+  const ho = document.getElementById('hud-overlay')
+  if (hp) hp.innerHTML = ''
+  if (ho) ho.innerHTML = ''
 
   // Save accumulated playtime for this session
   saveSessionPlaytime()

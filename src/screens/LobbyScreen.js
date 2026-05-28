@@ -67,7 +67,7 @@ export class LobbyScreen {
       }[status] || 'Ожидание игрока'
 
       return `
-        <div class="server-item status-${status}">
+        <div class="server-item status-${status} ${canJoin ? 'can-join' : ''}" ${canJoin ? `data-join="${r.id}"` : ''}>
           <div class="server-item-info">
             <span class="server-item-name">${this._esc(r.name)}</span>
             <span class="server-item-meta">
@@ -75,17 +75,11 @@ export class LobbyScreen {
             </span>
             <span class="server-item-status status-label-${status}">${statusLabel}</span>
           </div>
-          <button class="server-join-btn" data-join="${r.id}" ${canJoin ? '' : 'disabled'}>
-            ${canJoin ? 'Войти' : status === 'playing' ? '▶' : '●'}
-          </button>
         </div>`
     }).join('')
 
-    this.listEl.querySelectorAll('[data-join]:not([disabled])').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation()
-        networkClient.joinRoom(btn.dataset.join)
-      }
+    this.listEl.querySelectorAll('.server-item[data-join]').forEach(item => {
+      item.onclick = () => networkClient.joinRoom(item.dataset.join)
     })
   }
 

@@ -4,7 +4,7 @@ import { i18n } from '../utils/i18n.js'
 
 const KEYBIND_LABELS = {
   move_left: 'Влево', move_right: 'Вправо', jump: 'Прыжок / Взаимодействие',
-  dash: 'Дэш', down: 'Вниз', special: 'Особое (ПКМ)',
+  dash: 'Рывок', down: 'Вниз', special: 'Особое (ПКМ)',
   menu: 'Меню / Назад', fullscreen: 'Полный экран'
 }
 

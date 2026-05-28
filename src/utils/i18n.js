@@ -9,13 +9,13 @@ const T = {
     'lobby.profile':'Выберите профиль','lobby.new':'Новая игра','lobby.clear':'Clear Save',
     'lobby.level':'Уровень','lobby.no_servers':'Серверов нет',
     'level_select.start':'Начать','level_select.waiting':'Ожидание второго игрока...',
-    'ability.dash':'Дэш','ability.doubleJump':'Двойной прыжок','ability.wallCling':'Цепляние за стены',
+    'ability.dash':'Воздушный рывок','ability.doubleJump':'Двойной прыжок','ability.wallCling':'Цепляние за стены',
     'ability.groundSlam':'Удар о землю','ability.airDive':'Воздушный рывок вниз',
     'ability.grapple':'Крюк-кошка','ability.glide':'Парение',
     'ability.conjurePlatform':'Призыв платформы','ability.swap':'Обмен позициями',
     'ability.chargedDash':'Заряженный дэш',
     'key.move_left':'Влево','key.move_right':'Вправо','key.jump':'Прыжок',
-    'key.dash':'Дэш','key.down':'Вниз','key.special':'Особое (ПКМ)'
+    'key.dash':'Рывок','key.down':'Вниз','key.special':'Особое (ПКМ)'
   },
   en: {
     'menu.start':'Start Game','menu.settings':'Settings','menu.quit':'Quit',

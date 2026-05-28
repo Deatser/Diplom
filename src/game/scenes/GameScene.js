@@ -8,6 +8,80 @@ import {
 	togglePause,
 } from '../GameManager.js'
 
+// Форматирует KeyboardEvent.code в читаемую метку для подсказок.
+function keyCodeToLabel(code) {
+	if (!code) return '?'
+	const map = {
+		ShiftLeft: 'Shift',
+		ShiftRight: 'Shift',
+		ControlLeft: 'Ctrl',
+		ControlRight: 'Ctrl',
+		AltLeft: 'Alt',
+		AltRight: 'Alt',
+		Space: 'Пробел',
+		ArrowLeft: '←',
+		ArrowRight: '→',
+		ArrowUp: '↑',
+		ArrowDown: '↓',
+		Backquote: '`',
+		BracketLeft: '[',
+		BracketRight: ']',
+		Semicolon: ';',
+		Quote: "'",
+		Comma: ',',
+		Period: '.',
+		Slash: '/',
+		Minus: '-',
+		Equal: '=',
+		Backslash: '\\',
+	}
+	if (map[code]) return map[code]
+	if (code.startsWith('Key')) return code.slice(3)
+	if (code.startsWith('Digit')) return code.slice(5)
+	return code
+}
+
+// Показывает/скрывает HK-стилизованный prompt с CSS-анимациями.
+// onHidden — опциональный callback после завершения exit-анимации.
+function _showHkPrompt(el, visible, onHidden) {
+	if (visible) {
+		el.style.display = ''
+		el.querySelectorAll('.hk-orn, .hk-text').forEach(c => {
+			c.style.animation = 'none'
+			void c.offsetWidth
+			c.style.animation = ''
+		})
+		return
+	}
+	// Exit animations
+	const top = el.querySelector('.hk-orn-top')
+	const bot = el.querySelector('.hk-orn-bot')
+	const txt = el.querySelector('.hk-text')
+	const reset = c => {
+		c.style.animation = 'none'
+		void c.offsetWidth
+	}
+	if (top) {
+		reset(top)
+		top.style.animation = 'hkOrnTopOut 0.30s ease-in forwards'
+	}
+	if (bot) {
+		reset(bot)
+		bot.style.animation = 'hkOrnBottomOut 0.30s ease-in forwards'
+	}
+	if (txt) {
+		reset(txt)
+		txt.style.animation = 'hkTextOut 0.25s ease-in forwards'
+	}
+	setTimeout(() => {
+		el.style.display = 'none'
+		el.querySelectorAll('.hk-orn, .hk-text').forEach(
+			c => (c.style.animation = ''),
+		)
+		onHidden?.()
+	}, 320)
+}
+
 // Log to browser console + npm terminal simultaneously
 function tlog(...args) {
 	console.log(...args)
@@ -56,17 +130,34 @@ export class GameScene extends Phaser.Scene {
 		this._netUnsub = []
 		this._syncTimer = 0
 		this._orbCollected = false
+		this._orbNearby = false // игрок в зоне подбора орба
+		this._orbInteracting = false // ЛКМ нажата, анимация атаки играет
+		this._orbPromptEl = null // DOM элемент «Собрать» над орбом
+		this._worldLabels = [] // [{el,wx,wy}] DOM текст в мировых координатах
+		this._levelCompleteEl = null // DOM оверлей завершения уровня
+		this._abilityOverlayEl = null // DOM оверлей получения способности
+		this._inputLocked = false // true → updateLocal пропускается (кинематик)
+
+		this._localTrail = null // { g: Graphics, pts: [] } — trail дэша local
+		this._remoteTrail = null // trail дэша remote
+		this._testOrbs = [] // тестовые орбы для анимаций
 		this._exiting = false
 		this._gamePaused = false
 		this._exitZone = null
-		this._orbOverlap1 = null
-		this._orbOverlap2 = null
 		this._parallaxLayers = [] // [{sprite, sfX, sfY, driftX, driftY, _driftAccX, _driftAccY}]
 		this._driftSprites = [] // [{spr, velX, _acc}] — декоративные спрайты с pixel-точным движением
 		console.log('[GameScene] init levelId=', this.levelId, 'role=', this.role)
 	}
 
 	create() {
+		// displayScale = во сколько раз Phaser масштабирует canvas 320×180 до экрана.
+		// setResolution(ds) заставляет текст рендериться в ds× выше → HD качество.
+		const _res = SaveSystem.getSettings().video?.resolution || '1920x1080'
+		this._ds = Math.max(
+			2,
+			Math.round((Number(_res.split('x')[0]) || 1920) / 320),
+		)
+
 		tlog(`[GameScene] ══ BUILD 2026-05-27-D  levelId=${this.levelId} ══`)
 		tlog(
 			`[GameScene] tilemap_packed loaded : ${this.textures.exists('tilemap_packed')}`,
@@ -83,8 +174,8 @@ export class GameScene extends Phaser.Scene {
 		this._buildLevel()
 		this._createParallaxBg()
 
-		const localTex = this.role === 'host' ? 'player-blue' : 'player-orange'
-		const remoteTex = this.role === 'host' ? 'player-orange' : 'player-blue'
+		const localTex = this.role === 'host' ? 'blue-knight' : 'orange-knight'
+		const remoteTex = this.role === 'host' ? 'orange-knight' : 'blue-knight'
 
 		const spawn = this._getSpawn()
 		this.localPlayer = new Player(this, spawn.x, spawn.y, localTex, true)
@@ -149,16 +240,6 @@ export class GameScene extends Phaser.Scene {
 			down: this.input.keyboard.addKey(keyDown),
 		}
 
-		// Dash trail particles
-		this._dashParticles = this.add.particles(0, 0, localTex, {
-			speed: { min: 20, max: 80 },
-			scale: { start: 0.4, end: 0 },
-			alpha: { start: 0.6, end: 0 },
-			lifespan: 200,
-			quantity: 3,
-			emitting: false,
-		})
-
 		// ── Network ──
 		this._netUnsub.push(
 			networkClient.on('playerInput', ({ input }) => {
@@ -188,6 +269,11 @@ export class GameScene extends Phaser.Scene {
 					// LevelSelectScreen shows correct unlocked levels when returning
 					const newLevel = Math.min(this.levelId + 1, 10)
 					window.__currentSlotMaxLevel = newLevel
+					// Убрать world-space метки у гостя тоже
+					for (const lbl of this._worldLabels) lbl.el?.remove()
+					this._worldLabels = []
+					this._orbPromptEl?.remove()
+					this._orbPromptEl = null
 					this._showLevelComplete()
 				}
 			}),
@@ -202,6 +288,11 @@ export class GameScene extends Phaser.Scene {
 					levelId,
 					'(guest side)',
 				)
+				// Убрать level-complete оверлей и world-метки немедленно — не ждать shutdown()
+				this._levelCompleteEl?.remove()
+				this._levelCompleteEl = null
+				for (const lbl of this._worldLabels) lbl.el?.remove()
+				this._worldLabels = []
 				this._netUnsub.forEach(u => u())
 				this._netUnsub = []
 				window.__l2s = { ...window.__l2s, levelId }
@@ -221,16 +312,29 @@ export class GameScene extends Phaser.Scene {
 		})
 
 		if (this.orb) {
-			this._orbOverlap1 = this.physics.add.overlap(
-				this.localPlayer,
-				this.orb,
-				() => this._collectOrb(),
-			)
-			this._orbOverlap2 = this.physics.add.overlap(
-				this.remotePlayer,
-				this.orb,
-				() => this._collectOrb(),
-			)
+			// DOM prompt — crisp HD text above the orb, Hollow Knight–style frame
+			this._orbPromptEl = document.createElement('div')
+			this._orbPromptEl.className = 'hud-world-label hud-world-prompt'
+			this._orbPromptEl.innerHTML = `
+				<img class="hk-orn hk-orn-top" src="/assets/pngfortext/top.png" onerror="this.style.display='none'" />
+				<span class="hk-text">[ЛКМ] Собрать</span>
+				<img class="hk-orn hk-orn-bot" src="/assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
+			`
+			this._orbPromptEl.style.display = 'none'
+			document.getElementById('hud-prompts').appendChild(this._orbPromptEl)
+
+			// ЛКМ → сбор орба / тестовые орбы
+			this.input.on('pointerdown', ptr => {
+				if (!ptr.leftButtonDown()) return
+				// Основной орб (однократно)
+				if (this._orbNearby && !this._orbCollected && !this._orbInteracting) {
+					this._startOrbCollection()
+					return
+				}
+				// Тестовые орбы (бесконечно)
+				const nearby = this._testOrbs.find(o => o.nearby)
+				if (nearby) this._interactTestOrb(nearby)
+			})
 		}
 
 		if (this.pressurePlate && this.door) {
@@ -245,10 +349,53 @@ export class GameScene extends Phaser.Scene {
 		// Skip everything else when paused (input, physics, network sync)
 		if (this._gamePaused) return
 
-		this.localPlayer.updateLocal(this.keys, delta, time)
+		if (!this._inputLocked) this.localPlayer.updateLocal(this.keys, delta, time)
 		this._updateCamera(delta)
 		this._updateParallax(delta)
 		this._updateDriftSprites(delta)
+		this._updateDomPositions()
+
+		// Dash smoke trail — каждый кадр дэша пишем точку, рисуем шлейф
+		this._tickDashTrail(
+			this.localPlayer,
+			'_localTrail',
+			this.localPlayer._dashActive,
+		)
+		this._tickDashTrail(
+			this.remotePlayer,
+			'_remoteTrail',
+			this.remotePlayer._netDashActive,
+		)
+
+		// Test orb proximity prompts (infinite reuse)
+		for (const torb of this._testOrbs) {
+			const dist = Phaser.Math.Distance.Between(
+				this.localPlayer.x,
+				this.localPlayer.y,
+				torb.body.x,
+				torb.body.y,
+			)
+			const nearby = dist < 40
+			if (nearby !== torb.nearby) {
+				torb.nearby = nearby
+				_showHkPrompt(torb.promptEl, nearby)
+			}
+		}
+
+		// Orb proximity prompt
+		if (this.orb?.active && !this._orbCollected && !this._orbInteracting) {
+			const dist = Phaser.Math.Distance.Between(
+				this.localPlayer.x,
+				this.localPlayer.y,
+				this.orb.x,
+				this.orb.y,
+			)
+			const nearby = dist < 40
+			if (nearby !== this._orbNearby) {
+				this._orbNearby = nearby
+				if (this._orbPromptEl) _showHkPrompt(this._orbPromptEl, nearby)
+			}
+		}
 
 		// Pressure plate logic
 		if (this.pressurePlate && this.door) {
@@ -277,9 +424,106 @@ export class GameScene extends Phaser.Scene {
 		this._rmbPrev = this.input.mousePointer.rightButtonDown()
 	}
 
-	spawnDashParticles(x, y, facingRight) {
-		this._dashParticles.setPosition(x, y)
-		this._dashParticles.explode(8)
+	// ── Dash smoke trail (Hollow Knight Mothwing Cloak style) ─────────────────
+	// Каждый кадр дэша: добавляем точку и перерисовываем шлейф.
+	// Когда дэш заканчивается — весь шлейф плавно исчезает.
+	_tickDashTrail(player, trailKey, isDashing) {
+		if (isDashing) {
+			if (!this[trailKey]) {
+				this[trailKey] = { g: this.add.graphics().setDepth(9), pts: [] }
+			}
+			this[trailKey].pts.push({ x: player.x, y: player.y + 2 })
+			this._redrawDashTrail(this[trailKey], player._charPrefix)
+		} else if (this[trailKey]) {
+			const g = this[trailKey].g
+			this[trailKey] = null
+			this.tweens.add({
+				targets: g,
+				alpha: 0,
+				duration: 180,
+				ease: 'Quad.easeIn',
+				onComplete: () => g.destroy(),
+			})
+		}
+	}
+
+	_redrawDashTrail(trail, charPrefix) {
+		const g = trail.g
+		const pts = trail.pts
+		const n = pts.length
+
+		// ADD blending: цвета суммируются → нет грязных пятен от перекрытия,
+		// получается мягкое свечение. Цвета подобраны светлее оригинала
+		// чтобы при ADD они были заметны.
+		g.setBlendMode(Phaser.BlendModes.ADD)
+
+		const c1 = charPrefix === 'orange' ? 0xbb6200 : 0x3a5899
+		const c2 = charPrefix === 'orange' ? 0x7a3800 : 0x1e2f55
+
+		g.clear()
+		for (let i = 0; i < n; i++) {
+			const t = n > 1 ? i / (n - 1) : 1
+			const a = 0.15 + t * 0.75 // 0.15→0.90
+			const rw = 3 + t * 7 // 3→10 px
+			const rh = 5 + t * 10 // 5→15 px
+			g.fillStyle(t > 0.4 ? c1 : c2, a)
+			g.fillEllipse(pts[i].x, pts[i].y, rw, rh)
+		}
+	}
+
+	// ── OLD dash effect (больше не используется, оставлен для совместимости) ──
+	spawnDashEffect(x, y, facingRight, charPrefix) {
+		const dir = facingRight ? 1 : -1
+
+		const palette =
+			charPrefix === 'orange' ? [0x743f00, 0x512000] : [0x242f46, 0x141326]
+
+		const g = this.add.graphics().setDepth(9)
+
+		// dX  = сдвиг старта линии по направлению дэша
+		// dY  = вертикальное смещение от позиции игрока (0=голова, 22=ноги)
+		// len = длина в канвас-пикселях (нерегулярно)
+		// a   = прозрачность
+		// c   = цвет (0 или 1 из palette)
+		// b   = bend 1px: >0 загиб вниз, <0 загиб вверх, 0 прямая
+		const streaks = [
+			{ dX: 0, dY: 0, len: 18, a: 0.75, c: 0, b: 1 },
+			{ dX: 3, dY: 3, len: 11, a: 0.55, c: 1, b: 1 },
+			{ dX: 0, dY: 5, len: 26, a: 0.9, c: 0, b: 1 },
+			{ dX: 4, dY: 8, len: 7, a: 0.45, c: 1, b: 0 },
+			{ dX: 1, dY: 11, len: 31, a: 1.0, c: 0, b: 0 },
+			{ dX: 0, dY: 13, len: 9, a: 0.6, c: 1, b: 0 },
+			{ dX: 2, dY: 15, len: 22, a: 0.8, c: 0, b: -1 },
+			{ dX: 0, dY: 18, len: 14, a: 0.65, c: 1, b: -1 },
+			{ dX: 4, dY: 21, len: 6, a: 0.4, c: 0, b: -1 },
+			{ dX: 1, dY: 9, len: 17, a: 0.7, c: 1, b: 0 },
+		]
+
+		for (const s of streaks) {
+			const x1 = x + dir * s.dX
+			const x2 = x1 - dir * s.len
+			const yL = y + s.dY
+			const midX = (x1 + x2) / 2
+			g.lineStyle(1, palette[s.c], s.a)
+			g.beginPath()
+			g.moveTo(x1, yL)
+			if (s.b !== 0) {
+				// 1px загиб через среднюю точку — два отрезка вместо кривой Безье
+				g.lineTo(midX, yL + s.b)
+				g.lineTo(x2, yL)
+			} else {
+				g.lineTo(x2, yL)
+			}
+			g.strokePath()
+		}
+
+		this.tweens.add({
+			targets: g,
+			alpha: 0,
+			duration: 640,
+			ease: 'Quad.easeOut',
+			onComplete: () => g.destroy(),
+		})
 	}
 
 	_handleSpecial() {
@@ -310,30 +554,83 @@ export class GameScene extends Phaser.Scene {
 		this.localPlayer.body.reset(rx, ry)
 	}
 
+	// ЛКМ рядом с орбом — запуск полного кинематического сценария
+	_startOrbCollection() {
+		this._orbInteracting = true
+		this._orbNearby = false
+		this._inputLocked = true // отключить управление на всё время заставки
+
+		// Параллельно: fade-out HK-рамки + начало атаки
+		if (this._orbPromptEl) _showHkPrompt(this._orbPromptEl, false)
+		this.localPlayer.playAttack()
+
+		// После последнего кадра атаки: заморозить персонажа
+		// Player.playAttack() регистрирует .once первым (сбрасывает _animState='idle'),
+		// наш .once регистрируется следом — гарантированно выполняется вторым.
+		const attackKey = this.localPlayer._charPrefix + '-attack'
+		this.localPlayer.once('animationcomplete-' + attackKey, () => {
+			// Откатить на предпоследний кадр анимации атаки
+			const anim = this.localPlayer.anims.currentAnim
+			if (anim?.frames.length >= 2) {
+				this.localPlayer.setFrame(
+					anim.frames[anim.frames.length - 2].textureFrame,
+				)
+			}
+			// Заморозить физику — персонаж висит на предпоследнем кадре
+			this.localPlayer.body.setVelocity(0, 0)
+			this.localPlayer.body.setAllowGravity(false)
+			// Выдержать 0.5s замершего кадра, затем перейти к сбору
+			this.time.delayedCall(500, () => this._collectOrb())
+		})
+	}
+
+	// Тестовый орб — бесконечное взаимодействие, только анимация
+	_interactTestOrb(orb) {
+		const p = this.localPlayer
+		switch (orb.type) {
+			case 'orbtestattack':
+				p.playAttack()
+				break
+			case 'orbtesthit':
+				p.playHit()
+				break
+			case 'orbtestdeath':
+				p.playDead()
+				break
+			case 'orbtestshield':
+				p.playShieldToggle()
+				break
+		}
+	}
+
+	// Вызывается после заморозки (0.5s после последнего кадра атаки)
 	_collectOrb() {
 		if (this._orbCollected) return
 		this._orbCollected = true
-		if (this._orbOverlap1) {
-			this.physics.world.removeCollider(this._orbOverlap1)
-			this._orbOverlap1 = null
-		}
-		if (this._orbOverlap2) {
-			this.physics.world.removeCollider(this._orbOverlap2)
-			this._orbOverlap2 = null
-		}
-		this.orb.destroy()
+		this._orbPromptEl?.remove()
+		this._orbPromptEl = null
+		this.orb?.destroy()
+
 		const abilityName = this._getLevelAbility()
-		if (!abilityName) return
-		console.log('[GameScene] ORB collected! Ability:', abilityName)
-		this.localPlayer.unlock(abilityName)
-		this.remotePlayer.unlock(abilityName)
-		this._showAbilityUnlock(abilityName)
+		if (abilityName) {
+			this.localPlayer.unlock(abilityName)
+			this.remotePlayer.unlock(abilityName)
+			console.log('[GameScene] ORB collected! Ability:', abilityName)
+		}
 		this._updateHUD()
+
+		// Нет способности → разморозить сразу, нет смысла показывать оверлей
+		if (!abilityName) {
+			this._unfreezeAfterOrb()
+			return
+		}
+
+		this._showAbilityUnlock(abilityName)
 	}
 
 	_showAbilityUnlock(name) {
 		const labels = {
-			dash: 'Дэш',
+			dash: 'Воздушный рывок',
 			doubleJump: 'Двойной прыжок',
 			wallCling: 'Цепляние за стены',
 			groundSlam: 'Удар о землю',
@@ -344,43 +641,43 @@ export class GameScene extends Phaser.Scene {
 			swap: 'Обмен позициями',
 			chargedDash: 'Заряженный дэш',
 		}
-		// Canvas is 320×180 — use setScrollFactor(0) so overlay sticks to screen coords
-		const cx = 160,
-			cy = 90
-		const overlay = this.add
-			.rectangle(cx, cy, 320, 180, 0x000000, 0.8)
-			.setScrollFactor(0)
-			.setDepth(50)
-		const title = this.add
-			.text(cx, cy - 18, 'Способность получена', {
-				fontSize: '9px',
-				color: '#c8a96e',
-				fontFamily: 'Cinzel, serif',
+
+		// Читаем актуальные биндинги из настроек
+		const kb = SaveSystem.getSettings().keybindings || {}
+		const K = code => `<span class="ao-key">${keyCodeToLabel(code)}</span>`
+
+		const hints = {
+			dash: `Нажмите ${K(kb.dash || 'ShiftLeft')} на земле или в прыжке, чтобы устремиться вперёд`,
+			doubleJump: `Нажмите ${K(kb.jump || 'Space')} повторно в воздухе для второго прыжка`,
+			wallCling: `Прижмитесь к стене и удерживайте направление — скольжение замедляет падение`,
+			groundSlam: `В воздухе зажмите ${K(kb.down || 'KeyS')} чтобы с силой ударить о землю`,
+			airDive: `В воздухе зажмите ${K(kb.dash || 'ShiftLeft')} + вниз для стремительного рывка`,
+			grapple: `ПКМ чтобы выпустить крюк-кошку`,
+			glide: `Удерживайте ${K(kb.jump || 'Space')} в воздухе для медленного парения`,
+			conjurePlatform: `ПКМ чтобы создать временную платформу под ногами`,
+			swap: `ПКМ чтобы мгновенно поменяться местами с партнёром`,
+			chargedDash: `Удерживайте ${K(kb.dash || 'ShiftLeft')} для заряженного рывка`,
+		}
+
+		const el = document.createElement('div')
+		el.className = 'game-fullscreen-overlay'
+		el.innerHTML = `
+			<div class="ao-subtitle">Открыто:</div>
+			<div class="ao-name">${labels[name] || name}</div>
+			<div class="ao-tip">${hints[name] || ''}</div>
+			<img class="ao-lmb" src="/assets/pngfortext/mouseleft.png" onerror="this.style.display='none'" />
+		`
+		document.getElementById('hud-overlay').appendChild(el)
+		this._abilityOverlayEl = el
+
+		// Overlay перехватывает клики раньше Phaser-canvas → DOM-listener.
+		// Задержка: overlay 0.5s + name 0.35+0.45s + tip 0.85+0.5s + lmb 1.9+0.4s ≈ 2.3s
+		// Даём 2.5s — к этому моменту всё появилось, случайный клик исключён.
+		setTimeout(() => {
+			el.addEventListener('click', () => this._dismissAbilityOverlay(), {
+				once: true,
 			})
-			.setOrigin(0.5)
-			.setScrollFactor(0)
-			.setDepth(51)
-		const ability = this.add
-			.text(cx, cy + 4, labels[name] || name, {
-				fontSize: '16px',
-				color: '#ffffff',
-				fontFamily: 'Cinzel Decorative, serif',
-				shadow: {
-					offsetX: 0,
-					offsetY: 0,
-					color: '#ffffff',
-					blur: 8,
-					fill: true,
-				},
-			})
-			.setOrigin(0.5)
-			.setScrollFactor(0)
-			.setDepth(51)
-		this.time.delayedCall(2500, () => {
-			overlay.destroy()
-			title.destroy()
-			ability.destroy()
-		})
+		}, 2500)
 	}
 
 	_updateHUD() {
@@ -399,7 +696,7 @@ export class GameScene extends Phaser.Scene {
 			'chargedDash',
 		]
 		const labels = {
-			dash: 'Дэш',
+			dash: 'Рывок',
 			doubleJump: '2×Прыжок',
 			wallCling: 'Стена',
 			groundSlam: 'Слэм',
@@ -928,9 +1225,42 @@ export class GameScene extends Phaser.Scene {
 					this.doorBody = this.door
 					break
 				case 'sign': {
-					// Only text, no background image — sign sprite to be added later
 					const text = prop('text') || ''
 					this._makeSign(x, y, text)
+					break
+				}
+				case 'orbtestattack':
+				case 'orbtesthit':
+				case 'orbtestdeath':
+				case 'orbtestshield': {
+					const testBody = this.physics.add
+						.staticImage(x, y, 'orb')
+						.setVisible(false)
+						.setDisplaySize(28, 28)
+						.refreshBody()
+					const testLabels = {
+						orbtestattack: '[ЛКМ] Атака',
+						orbtesthit: '[ЛКМ] Урон',
+						orbtestdeath: '[ЛКМ] Смерть',
+						orbtestshield: '[ЛКМ] Щит ⇄',
+					}
+					const testPromptEl = document.createElement('div')
+					testPromptEl.className = 'hud-world-label hud-world-prompt-test'
+					testPromptEl.innerHTML = `
+						<img class="hk-orn hk-orn-top" src="/assets/pngfortext/top.png" onerror="this.style.display='none'" />
+						<span class="hk-text">${testLabels[type]}</span>
+						<img class="hk-orn hk-orn-bot" src="/assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
+					`
+					testPromptEl.style.display = 'none'
+					document.getElementById('hud-prompts').appendChild(testPromptEl)
+					this._testOrbs.push({
+						body: testBody,
+						type,
+						promptEl: testPromptEl,
+						wx: x,
+						wy: y - 22,
+						nearby: false,
+					})
 					break
 				}
 			}
@@ -953,14 +1283,14 @@ export class GameScene extends Phaser.Scene {
 		this._makePlatform(W / 2, 200, 300, 20, 'tile-ground')
 		this._makeExitZone(W / 2, 170)
 
-		this.add
-			.text(W / 2, 120, '🏔 Вершина горы!', {
-				fontSize: '28px',
-				color: '#ffd700',
-				fontFamily: 'Cinzel, serif',
-			})
-			.setOrigin(0.5)
-			.setDepth(10)
+		const peakEl = document.createElement('div')
+		peakEl.className = 'hud-world-label hud-world-sign'
+		peakEl.textContent = '🏔 Вершина горы!'
+		peakEl.style.fontSize = '1.2rem'
+		peakEl.style.color = '#ffd700'
+		peakEl.style.textShadow = '0 0 16px #ffd700'
+		document.getElementById('hud-prompts').appendChild(peakEl)
+		this._worldLabels.push({ el: peakEl, wx: W / 2, wy: 120 })
 	}
 
 	_buildStub() {
@@ -969,14 +1299,13 @@ export class GameScene extends Phaser.Scene {
 		this._makePlatform(W / 2, H - 32, W, 64, 'tile-ground')
 		this._makePlatform(W / 2, H - 200, 300, 20, 'tile-platform')
 		this._makeExitZone(W / 2, H - 230)
-		this.add
-			.text(W / 2, H - 320, `Уровень ${this.levelId}\n(В разработке)`, {
-				fontSize: '24px',
-				color: '#ffffff66',
-				align: 'center',
-				fontFamily: 'Cinzel, serif',
-			})
-			.setOrigin(0.5)
+		const stubEl = document.createElement('div')
+		stubEl.className = 'hud-world-label hud-world-sign'
+		stubEl.innerHTML = `Уровень ${this.levelId}<br>(В разработке)`
+		stubEl.style.color = 'rgba(255,255,255,0.4)'
+		stubEl.style.textAlign = 'center'
+		document.getElementById('hud-prompts').appendChild(stubEl)
+		this._worldLabels.push({ el: stubEl, wx: W / 2, wy: H - 320 })
 	}
 
 	_makePlatform(x, y, w, h, tex) {
@@ -994,19 +1323,11 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	_makeSign(x, y, text) {
-		// No background sprite — just the text floating, readable via stroke
-		// Replace with proper sign sprite when pixel art is ready
-		this.add
-			.text(x, y - 12, text, {
-				fontSize: '10px',
-				color: '#ffffff',
-				fontFamily: 'Arial, sans-serif',
-				align: 'center',
-				stroke: '#000000',
-				strokeThickness: 3,
-			})
-			.setOrigin(0.5)
-			.setDepth(7)
+		const el = document.createElement('div')
+		el.className = 'hud-world-label hud-world-sign'
+		el.textContent = text
+		document.getElementById('hud-prompts').appendChild(el)
+		this._worldLabels.push({ el, wx: x, wy: y - 12 })
 	}
 
 	_addOrbGlow(x, y) {
@@ -1031,14 +1352,11 @@ export class GameScene extends Phaser.Scene {
 		const zone = this.add.zone(x, y, 80, 40).setDepth(9)
 		this.physics.world.enable(zone)
 		zone.body.allowGravity = false
-		this.add
-			.text(x, y, '▲ ВЫХОД', {
-				fontSize: '12px',
-				color: '#4ade80',
-				fontFamily: 'Cinzel, serif',
-			})
-			.setOrigin(0.5)
-			.setDepth(10)
+		const el = document.createElement('div')
+		el.className = 'hud-world-label hud-world-exit'
+		el.textContent = '▲ ВЫХОД'
+		document.getElementById('hud-prompts').appendChild(el)
+		this._worldLabels.push({ el, wx: x, wy: y })
 		this._exitZone = zone
 	}
 
@@ -1055,6 +1373,12 @@ export class GameScene extends Phaser.Scene {
 		this._exiting = true
 		console.log('[GameScene] Exit! Level', this.levelId, 'complete')
 
+		// Убрать все world-space метки немедленно — они не нужны после выхода с уровня
+		for (const lbl of this._worldLabels) lbl.el?.remove()
+		this._worldLabels = []
+		this._orbPromptEl?.remove()
+		this._orbPromptEl = null
+
 		// Update per-slot level progress (for host AND guest)
 		const newLevel = Math.min(this.levelId + 1, 10)
 		window.__currentSlotMaxLevel = newLevel // always update (both roles)
@@ -1069,55 +1393,24 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	_showLevelComplete() {
-		// Canvas is 320×180 — setScrollFactor(0) pins to screen, positions in screen px
-		const cx = 160,
-			cy = 90
 		const nextLevel = Math.min(this.levelId + 1, 10)
 		const isLast = this.levelId >= 10
+		const titleText = isLast
+			? '🏆 ИГРА ПРОЙДЕНА!'
+			: `УРОВЕНЬ ${this.levelId} ПРОЙДЕН!`
 
-		this.add
-			.rectangle(cx, cy, 320, 180, 0x000000, 0.85)
-			.setScrollFactor(0)
-			.setDepth(100)
-		this.add
-			.text(
-				cx,
-				cy - 44,
-				isLast ? '🏆 ИГРА ПРОЙДЕНА!' : `УРОВЕНЬ ${this.levelId} ПРОЙДЕН!`,
-				{
-					fontSize: '14px',
-					color: '#ffd700',
-					fontFamily: 'Cinzel Decorative, serif',
-					shadow: {
-						offsetX: 0,
-						offsetY: 0,
-						color: '#ffd700',
-						blur: 8,
-						fill: true,
-					},
-				},
-			)
-			.setOrigin(0.5)
-			.setScrollFactor(0)
-			.setDepth(101)
+		const el = document.createElement('div')
+		el.className = 'game-fullscreen-overlay'
+		el.innerHTML = `<div class="game-overlay-title">${titleText}</div>`
 
 		if (this.role === 'host') {
 			if (!isLast) {
-				const nextBtn = this.add
-					.text(cx, cy - 6, `▶  Уровень ${nextLevel}`, {
-						fontSize: '11px',
-						color: '#4ade80',
-						fontFamily: 'Cinzel, serif',
-						padding: { x: 8, y: 4 },
-					})
-					.setOrigin(0.5)
-					.setScrollFactor(0)
-					.setDepth(101)
-					.setInteractive({ useHandCursor: true })
-
-				nextBtn.on('pointerover', () => nextBtn.setColor('#ffffff'))
-				nextBtn.on('pointerout', () => nextBtn.setColor('#4ade80'))
-				nextBtn.on('pointerup', () => {
+				const nextBtn = document.createElement('button')
+				nextBtn.className = 'game-btn game-btn-primary'
+				nextBtn.textContent = `▶  Уровень ${nextLevel}`
+				nextBtn.addEventListener('click', () => {
+					el.remove()  // убрать оверлей немедленно — не ждать shutdown()
+					this._levelCompleteEl = null
 					console.log('[GameScene] Host → next level', nextLevel)
 					saveSessionPlaytime()
 					window.__l2s = { ...window.__l2s, levelId: nextLevel }
@@ -1128,40 +1421,112 @@ export class GameScene extends Phaser.Scene {
 						this.scene.restart({ levelId: nextLevel, role: 'host' })
 					})
 				})
+				el.appendChild(nextBtn)
 			}
-
-			const menuBtn = this.add
-				.text(cx, cy + 22, '◀  Выбор уровня', {
-					fontSize: '9px',
-					color: '#888888',
-					fontFamily: 'Cinzel, serif',
-					padding: { x: 8, y: 4 },
-				})
-				.setOrigin(0.5)
-				.setScrollFactor(0)
-				.setDepth(101)
-				.setInteractive({ useHandCursor: true })
-
-			menuBtn.on('pointerover', () => menuBtn.setColor('#ffffff'))
-			menuBtn.on('pointerout', () => menuBtn.setColor('#888888'))
-			menuBtn.on('pointerup', () => {
+			const menuBtn = document.createElement('button')
+			menuBtn.className = 'game-btn'
+			menuBtn.textContent = '◀  Выбор уровня'
+			menuBtn.addEventListener('click', () => {
 				networkClient.exitGame()
 				this._netUnsub.forEach(u => u())
 				this._netUnsub = []
 				this.scene.stop()
 				exitToLevelSelect()
 			})
+			el.appendChild(menuBtn)
 		} else {
-			this.add
-				.text(cx, cy + 10, 'Ожидание хоста…', {
-					fontSize: '9px',
-					color: '#888888',
-					fontFamily: 'Cinzel, serif',
-				})
-				.setOrigin(0.5)
-				.setScrollFactor(0)
-				.setDepth(101)
+			const waiting = document.createElement('div')
+			waiting.className = 'game-overlay-subtitle'
+			waiting.style.color = 'rgba(255,255,255,0.45)'
+			waiting.textContent = 'Ожидание хоста…'
+			el.appendChild(waiting)
 		}
+
+		document.getElementById('hud-overlay').appendChild(el)
+		this._levelCompleteEl = el
+	}
+
+	// Converts a world-space point to viewport CSS px — used to position DOM labels.
+	_worldToScreen(wx, wy) {
+		const cam = this.cameras.main
+		const rect = this.game.canvas.getBoundingClientRect()
+		const sx =
+			(wx - cam.scrollX) * cam.zoom * (rect.width / this.game.config.width)
+		const sy =
+			(wy - cam.scrollY) * cam.zoom * (rect.height / this.game.config.height)
+		return { x: rect.left + sx, y: rect.top + sy }
+	}
+
+	// Called every frame — keeps DOM label positions in sync with the camera.
+	// Position is updated as long as the element is VISIBLE (display !== 'none'),
+	// including during exit animations — prevents "drifting" while fading out.
+	_updateDomPositions() {
+		for (const lbl of this._worldLabels) {
+			const p = this._worldToScreen(lbl.wx, lbl.wy)
+			lbl.el.style.left = p.x + 'px'
+			lbl.el.style.top = p.y + 'px'
+		}
+		if (
+			this._orbPromptEl &&
+			this._orbPromptEl.style.display !== 'none' &&
+			this.orb?.active
+		) {
+			const p = this._worldToScreen(this.orb.x, this.orb.y - 22)
+			this._orbPromptEl.style.left = p.x + 'px'
+			this._orbPromptEl.style.top = p.y + 'px'
+		}
+		for (const torb of this._testOrbs) {
+			if (torb.promptEl.style.display !== 'none') {
+				const p = this._worldToScreen(torb.wx, torb.wy)
+				torb.promptEl.style.left = p.x + 'px'
+				torb.promptEl.style.top = p.y + 'px'
+			}
+		}
+	}
+
+	// ЛКМ на оверлее — плавно скрыть, потом разморозить персонажа
+	_dismissAbilityOverlay() {
+		if (!this._abilityOverlayEl) return
+		const el = this._abilityOverlayEl
+		this._abilityOverlayEl = null
+		el.classList.add('hiding') // запускает CSS-анимацию overlayOut
+		setTimeout(() => {
+			el.remove()
+			this._unfreezeAfterOrb()
+		}, 500)
+	}
+
+	// Разморозить физику и ввод после кинематика сбора орба
+	_unfreezeAfterOrb() {
+		this.localPlayer.body.setAllowGravity(true)
+		// Принудительно вернуть idle-анимацию — _animState уже 'idle' после атаки,
+		// но спрайт завис на последнем кадре, поэтому play() нужен явно.
+		this.localPlayer._animState = ''
+		this.localPlayer.play(this.localPlayer._charPrefix + '-idle')
+		this.localPlayer._animState = 'idle'
+		this._inputLocked = false
+	}
+
+	// Phaser lifecycle — called on scene stop/restart. Cleans up all DOM elements.
+	shutdown() {
+		// Явно удалить каждый отслеживаемый элемент
+		this._levelCompleteEl?.remove()
+		this._abilityOverlayEl?.remove()
+		this._orbPromptEl?.remove()
+		for (const lbl of this._worldLabels)  lbl.el?.remove()
+		for (const torb of this._testOrbs)    torb.promptEl?.remove()
+
+		// Сбросить контейнеры полностью на случай если что-то пропустили
+		const hp = document.getElementById('hud-prompts')
+		const ho = document.getElementById('hud-overlay')
+		if (hp) hp.innerHTML = ''
+		if (ho) ho.innerHTML = ''
+
+		this._worldLabels      = []
+		this._orbPromptEl      = null
+		this._abilityOverlayEl = null
+		this._levelCompleteEl  = null
+		this._inputLocked      = false
 	}
 
 	_exitGame(completed = false, notify = true) {

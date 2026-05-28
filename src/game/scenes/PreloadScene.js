@@ -48,6 +48,10 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image('ts-topdown_jungle', '/levels/topdown_jungle.png')
     this.load.image('bg-tile', '/assets/bg-tile.png')
 
+    // ── Player spritesheets 512×512, кадр 64×64 (8 cols × 8 rows) ────────────
+    this.load.spritesheet('blue-knight',   '/assets/playerblue/blueknight.png',    { frameWidth: 64, frameHeight: 64 })
+    this.load.spritesheet('orange-knight', '/assets/playerorange/orangeknight.png', { frameWidth: 64, frameHeight: 64 })
+
     // Parallax backdrop layers — real pixel-art PNGs go in /public/assets/parallax/
     // loaderror fires silently, so listing here is safe even if files don't exist yet.
     // When the file IS present, it overrides the generated placeholder below.
@@ -100,13 +104,31 @@ export class PreloadScene extends Phaser.Scene {
     g.generateTexture('sign',  1, 1); g.clear()
 
     // Parallax PNGs загружаются из /public/assets/parallax/ (см. preload выше).
-    // NEAREST фильтр (дефолт pixelArt:true) — оставляем, снэппинг к canvas-пикселю в _updateParallax.
     const PX_KEYS = ['px-sky', 'px-mtn', 'px-clouds-far', 'px-clouds-near', 'px-clouds-btm']
     for (const k of PX_KEYS) {
       tlog(`[Preload] parallax "${k}": ${this.textures.exists(k) ? '✓ загружен' : '✗ не найден'}`)
     }
 
     g.destroy()
+
+    // ── Player animations (spritesheet 64×64, 8 cols × 8 rows) ─────────────
+    // row1=idle 0-4 | row2=run 8-15 | row3=jump 16-18 | row4=fall 24-25
+    // row5=attack 32-37 | row6=hit 40 | row7=dead 48-54 | row8=shield 56-57
+    const gfn = (key, frames) => this.anims.generateFrameNumbers(key, { frames })
+
+    this.anims.create({ key: 'blue-idle',     frames: gfn('blue-knight',   [0,1,2,3,4]),                frameRate: 8,  repeat: -1 })
+    this.anims.create({ key: 'blue-run',      frames: gfn('blue-knight',   [8,9,10,11,12,13,14,15]),    frameRate: 12, repeat: -1 })
+    this.anims.create({ key: 'blue-attack',   frames: gfn('blue-knight',   [32,33,34,35,36,37]),        frameRate: 12, repeat:  0 })
+    this.anims.create({ key: 'orange-idle',   frames: gfn('orange-knight', [0,1,2,3,4]),                frameRate: 8,  repeat: -1 })
+    this.anims.create({ key: 'orange-run',    frames: gfn('orange-knight', [8,9,10,11,12,13,14,15]),   frameRate: 12, repeat: -1 })
+    this.anims.create({ key: 'orange-attack', frames: gfn('orange-knight', [32,33,34,35,36,37]),       frameRate: 12, repeat:  0 })
+    // row6=hit(40)  row7=dead(48-54)  row8=shield(56-57)
+    this.anims.create({ key: 'blue-hit',      frames: gfn('blue-knight',   [40]),                      frameRate: 10, repeat:  0 })
+    this.anims.create({ key: 'blue-dead',     frames: gfn('blue-knight',   [48,49,50,51,52,53,54]),    frameRate: 8,  repeat:  0 })
+    this.anims.create({ key: 'blue-shield',   frames: gfn('blue-knight',   [56,57]),                   frameRate: 6,  repeat: -1 })
+    this.anims.create({ key: 'orange-hit',    frames: gfn('orange-knight', [40]),                      frameRate: 10, repeat:  0 })
+    this.anims.create({ key: 'orange-dead',   frames: gfn('orange-knight', [48,49,50,51,52,53,54]),    frameRate: 8,  repeat:  0 })
+    this.anims.create({ key: 'orange-shield', frames: gfn('orange-knight', [56,57]),                   frameRate: 6,  repeat: -1 })
 
     tlog('[Preload] → starting GameScene')
     this.scene.start('GameScene', window.__l2s || { levelId: 1, role: 'host' })
