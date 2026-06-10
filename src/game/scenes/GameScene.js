@@ -3273,14 +3273,25 @@ export class GameScene extends Phaser.Scene {
 		}
 		this.localPlayer.playDead()
 
-		// После анимации: подождать 400ms, показать экран И уведомить партнёра одновременно
+		// Показываем оффер «Второй шанс» РОВНО ОДИН раз — по завершении анимации
+		// смерти ИЛИ по таймеру-страховке. На задеплоенной версии событие
+		// animationcomplete иногда не приходило (другой фрейм-пейсинг / шаг лупа
+		// из tick-worker / потеря фокуса) → оффер не появлялся. Таймер гарантирует
+		// показ при любом окружении.
+		let _offerShown = false
+		const showOffer = () => {
+			if (_offerShown || this._exiting) return
+			_offerShown = true
+			networkClient.playerDied() // партнёр замирает и ждёт (как и раньше)
+			this._showReviveOffer() // «Второй шанс»: 5с-полоска + кнопка рекламы
+		}
 		const deadKey = this.localPlayer._charPrefix + '-dead'
-		this.localPlayer.once('animationcomplete-' + deadKey, () => {
-			this.time.delayedCall(400, () => {
-				networkClient.playerDied() // партнёр замирает и ждёт (как и раньше)
-				this._showReviveOffer() // «Второй шанс»: 5с-полоска + кнопка рекламы
-			})
-		})
+		this.localPlayer.once('animationcomplete-' + deadKey, () =>
+			this.time.delayedCall(400, showOffer),
+		)
+		// Страховка: анимация смерти ≈875мс (7 кадров @8fps) + 400мс ≈ 1.3с.
+		// Если событие не пришло — принудительно показываем оффер через 1.6с.
+		this.time.delayedCall(1600, showOffer)
 	}
 
 	// «Второй шанс»: после смерти 5с тикает полоска (без цифр) с предложением
