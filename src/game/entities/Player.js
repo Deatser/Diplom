@@ -1,4 +1,6 @@
 import Phaser from 'phaser'
+import AudioManager from '../AudioManager.js'
+import { networkClient } from '../../network/NetworkClient.js'
 
 // ── Hollow Knight–inspired physics constants ─────────────────────────────────
 // HK feel: высокий прыжок (~4-5 высот игрока), снэппи дэш, быстрый разгон.
@@ -9,13 +11,13 @@ const RUN_ACCEL = 1500 // px/s² — снэппи разгон
 const RUN_REDUCE = 500 // px/s²
 const AIR_MULT = 0.65
 
-const JUMP_VEL = -200 // px/s — apex ≈ 52px ≈ 4.7 высоты игрока
-const JUMP_HBOOST = 40 // px/s горизонтальный буст при прыжке
+const JUMP_VEL = -245 // px/s — чуть слабее прыжок (было -270)
+const JUMP_HBOOST = 50 // px/s горизонтальный буст при прыжке
 const VAR_JUMP_TIME = 0.15 // s — HK чуть короче окно чем Celeste
-const HALF_GRAV_THRESHOLD = 40 // px/s — плавный apex
+const HALF_GRAV_THRESHOLD = 50 // px/s — плавный apex
 const JUMP_GRACE = 0.1 // s — coyote time
-const MAX_FALL = 200 // px/s
-const FAST_MAX_FALL = 280 // px/s при зажатом вниз
+const MAX_FALL = 280 // px/s
+const FAST_MAX_FALL = 380 // px/s при зажатом вниз
 
 const DASH_SPEED = 380 // px/s — быстрый резкий дэш
 const END_DASH_SPEED = 180 // px/s скорость после дэша
@@ -26,7 +28,7 @@ const DASH_CD = 0.6 // s
 // Сам рыцарь занимает ~30% кадра → ~14-16 canvas-px видимого персонажа
 // Хитбокс 12×22 — центрирован горизонтально, прижат к низу
 const HB_W = 12,
-	HB_H = 22
+	HB_H = 30
 const CHAR_CFG = {
 	blue: { sprW: 48, sprH: 48 },
 	orange: { sprW: 48, sprH: 48 },
@@ -70,6 +72,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		this._jumpGraceTimer = 0
 		this._animState = 'idle' // 'idle' | 'run' | 'attack'
 		this._netDashActive = false // актуально только для remote player
+		this._wasOnGround = true // для детекта приземления (звук jumpland); true → нет звука на спавне
+		this._lastAirVelY = 0 // последняя скорость падения в воздухе (порог для jumpland)
 
 		// Запускаем idle сразу — анимации созданы в PreloadScene до старта GameScene
 		this.play(this._charPrefix + '-idle')
@@ -91,6 +95,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		const body = this.body
 		const onGround = body.blocked.down
 		const dtS = Math.min(delta / 1000, 0.05) // seconds, capped at 50ms
+
+		// Приземление после прыжка/падения: переход воздух→земля с заметной скоростью
+		// вниз (порог отсекает мелкие сходы со ступенек). _lastAirVelY — последняя
+		// вертикальная скорость в воздухе (на кадре касания она уже обнулена физикой).
+		if (onGround && !this._wasOnGround && this._lastAirVelY > 60) {
+			this._sfxNet('jumpland', 0.4)
+		}
+		if (!onGround) this._lastAirVelY = body.velocity.y
+		this._wasOnGround = onGround
 
 		// Reset air abilities when grounded
 		if (onGround) {
@@ -140,6 +153,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		if (jumpJust) {
 			if (canJump) {
 				this._jumpGraceTimer = 0 // потребить coyote
+				this._sfxNet('jump', 0.38) // звук прыжка
 				body.setVelocityY(JUMP_VEL)
 				if (keys.left.isDown) body.setVelocityX(body.velocity.x - JUMP_HBOOST)
 				else if (keys.right.isDown)
@@ -149,6 +163,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 				this.unlockedAbilities.has('doubleJump') &&
 				!this._usedDblJump
 			) {
+				this._sfxNet('jump', 0.38) // звук двойного прыжка
 				body.setVelocityY(JUMP_VEL)
 				this._usedDblJump = true
 				this._varJumpTimer = VAR_JUMP_TIME
@@ -166,7 +181,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		// Half gravity в apex (Celeste HalfGravThreshold)
 		// Phaser уже применил полную гравитацию — добавляем обратно половину
 		if (!onGround && Math.abs(body.velocity.y) <= HALF_GRAV_THRESHOLD) {
-			body.setVelocityY(body.velocity.y + 900 * 0.5 * dtS)
+			body.setVelocityY(body.velocity.y + 1100 * 0.5 * dtS)
 		}
 
 		// Ограничение скорости падения: зажать вниз → FastMaxFall (Celeste exact)
@@ -278,7 +293,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		this._netVelX = state.vx || 0
 		this._netVelY = state.vy || 0
 		this._netAge = 0
+		const wasDashing = this._netDashActive
 		this._netDashActive = state.isDashing ?? false
+		if (!wasDashing && this._netDashActive) this._sfx('dash', 0.6) // дэш партнёра
+
 		if (state.flipX !== undefined) this.setFlipX(state.flipX)
 		if (state.anim === 'attack' && this._animState !== 'attack')
 			this.playAttack()
@@ -307,9 +325,42 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		this.play(this._charPrefix + '-' + state)
 	}
 
+	// Позиционный игровой звук: затухает и панорамируется по дистанции ЭТОГО игрока
+	// до local-игрока (слушателя). Для local-игрока (this === localPlayer) — полная
+	// громкость по центру; для remote — тише и со смещением в сторону партнёра.
+	_sfx(key, vol = 0.5) {
+		const sc = this.scene
+		if (!sc?.cache?.audio?.exists(key)) return
+		const me = sc.localPlayer
+		let f = 1
+		let pan = 0
+		if (me && me !== this) {
+			const d = Phaser.Math.Distance.Between(me.x, me.y, this.x, this.y)
+			const MAX = 700
+			f = Math.max(0, 1 - d / MAX)
+			f *= f
+			if (f <= 0.001) return
+			pan = Math.max(-1, Math.min(1, (this.x - me.x) / 450))
+		}
+		sc.sound.play(key, { volume: vol * f * AudioManager.getMultiplier('sfx'), pan })
+	}
+
+	// То же + трансляция партнёру (для звуков, у которых нет иной сетевой синхронизации:
+	// прыжок, приземление). Вызывается только из local-кода → шлём, если это я.
+	_sfxNet(key, vol = 0.5) {
+		this._sfx(key, vol)
+		if (this.isLocal) networkClient.playerSfx(key, vol)
+	}
+
 	playAttack() {
 		if (this._animState === 'attack') return
 		this._animState = 'attack'
+		// Звук удара при активации (играет и для local, и для remote через setNetworkState).
+		if (this.scene?.cache?.audio?.exists('knife-slice')) {
+			this.scene.sound.play('knife-slice', {
+				volume: 0.5 * AudioManager.getMultiplier('sfx'),
+			})
+		}
 		const key = this._charPrefix + '-attack'
 		this.play(key)
 		this.once('animationcomplete-' + key, () => {
@@ -347,6 +398,26 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		}
 	}
 
+	// ── Скриптовые действия для катсцен (input заблокирован) ──────────────────
+	// Прыжок по сценарию: задаём скорость вверх + звук (физика/гравитация доведут арку).
+	scriptedJump() {
+		this.body.setVelocityY(JUMP_VEL)
+		this._sfxNet('jump', 0.38)
+	}
+	// Идти в сторону dir (1=вправо, -1=влево) на беговой скорости + анимация бега.
+	scriptedWalk(dir) {
+		this._facingRight = dir > 0
+		this.setFlipX(dir < 0)
+		this.body.setVelocityX(MAX_RUN * dir)
+		this._animState = 'idle' // снять возможный attack-замок, чтобы run проиграл
+		this._setAnim('run')
+	}
+	scriptedStop() {
+		this.body.setVelocityX(0)
+		this._animState = 'idle'
+		this.play(this._charPrefix + '-idle')
+	}
+
 	unlock(ability) {
 		if (!ability) return
 		this.unlockedAbilities.add(ability)
@@ -357,6 +428,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 	}
 
 	_startDash(now) {
+		this._sfx('dash', 0.6) // звук рывка
 		this._dashActive = true
 		this._dashEndMs = now + DASH_SECS * 1000
 		this._dashCdEndMs = now + DASH_CD * 1000

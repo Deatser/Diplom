@@ -35,6 +35,9 @@ const GROUND_DEPTH = 8 // брызги на полу: над тайлами (~4)
 // на каждый 1px вверх — столько px вправо.
 const SPLASH_ANGLE = 0.42
 
+// ⭐ ПЕРЕКЛЮЧАТЕЛЬ брызг на проводах. 'On' — есть, 'off' (или любое другое) — нет.
+const WIRE_SPLASHES = 'On'
+
 // Палитра под Hollow Knight (мрачная топь / Mantis Village): десатурированный
 // серый дождь — от почти белого до тёмно-серого, с лёгким холодным отливом.
 // Рампа яркости: индекс 0 = ярче всего, последний = самый тёмный.
@@ -95,7 +98,7 @@ const LAYERS = {
 // цвета к цвету лампы, и прибавку яркости. 1.0 = полная, 0.0 = ВЫКЛ (дождь как
 // обычный, без оранжевого). Меняй ЭТО число. Если ставишь 0 и дождь всё равно
 // оранжевый у лампы — значит модуль не перезагрузился (жёсткий релоад Ctrl+F5).
-const GLOW_STRENGTH = 0.7
+const GLOW_STRENGTH = 1.1
 
 function pick(arr) {
 	return arr[(Math.random() * arr.length) | 0]
@@ -134,10 +137,16 @@ export class RainEffect {
 		this.splashes = []
 		this.groundSplashes = []
 		this._splashAcc = 0 // дробный аккумулятор спавна брызг
-		// Источник света, который «ловит» дождь: {wx, wy} мировые, r — радиус в
-		// canvas-пикселях, color 0xRRGGBB. Капли/крапины рядом подсвечиваются его
-		// цветом и ярче. Обновляется снаружи каждый кадр (GameScene). null = нет.
-		this.light = null
+		// Брызги на проводах: зоны (верхняя кромка провода) задаются снаружи каждый
+		// кадр (GameScene из WireEffect.splashZones). Рендерятся в gWire НАД проводом.
+		this.wireZones = []
+		this.wireSplashes = []
+		this._wireSplashAcc = 0
+		// Источники света, «ловящие» дождь: массив { wx, wy (мировые), r (радиус,
+		// canvas-px), color 0xRRGGBB, intensity }. Капли/крапины у БЛИЖАЙШЕЙ лампы
+		// тонируются её цветом и ярче. Ставится снаружи (GameScene). [] = нет.
+		this.lights = []
+		this._glowCol = 0xffffff // цвет доминирующей лампы для последнего glowAt()
 	}
 
 	create() {
@@ -151,6 +160,9 @@ export class RainEffect {
 			.graphics()
 			.setScrollFactor(0)
 			.setDepth(GROUND_DEPTH)
+
+		// Брызги на проводах — поверх провода (depth 900), ниже штрихов дождя (1000).
+		this.gWire = this.scene.add.graphics().setScrollFactor(0).setDepth(901)
 
 		// near = яркий ближний слой, far = тусклый дальний
 		// Три слоя глубины: больше дальних/средних (создают «дымку» дождя),
@@ -193,7 +205,7 @@ export class RainEffect {
 		d.y = rand(-d.len - 6, -d.len)
 		d.x = rand(0, CANVAS_W + d.margin)
 		// Фейковый всплеск у нижнего края — только если нет реальных зон пола,
-		// иначе брызги идут из splashZones (метод _spawnGroundSplash).
+		// иначе брызги идут из splashZones (метод _spawnSplash).
 		if (this.zones.length === 0 && d.head && Math.random() < 0.5) {
 			this.splashes.push({
 				x: Math.round(d.x + d.slope * d.len),
@@ -204,25 +216,114 @@ export class RainEffect {
 		}
 	}
 
-	// Один всплеск на полу в мировой точке (wx, wy): яркая вспышка удара +
-	// 2–4 капли с начальной скоростью вверх-вбок, летящие по параболе.
-	_spawnGroundSplash(wx, wy) {
-		const n = 3 + ((Math.random() * 4) | 0) // 3..6 капель (больше, гуще)
+	// Один всплеск в мировой точке (wx, wy): яркая вспышка удара + 2–4 капли с
+	// начальной скоростью вверх-вбок, летящие по параболе. Кладётся в массив arr.
+	//   speed — масштаб СКОРОСТИ (1 = как на полу). Влияет на vy/vx и гравитацию.
+	//   size  — масштаб РАЗМЕРА/разлёта (1 = как на полу, <1 = компактнее): короче
+	//           жизнь и меньше капель → всплеск занимает меньше места.
+	_spawnSplash(arr, wx, wy, speed = 1, size = 1) {
+		const baseN = 3 + ((Math.random() * 4) | 0) // 3..6 капель
+		const n = Math.max(1, Math.round(baseN * size))
 		const drops = []
 		for (let i = 0; i < n; i++) {
-			const vy = -rand(24, 46) // px/s вверх — умеренный подброс
+			const vy = -rand(24, 46) * speed // px/s вверх — умеренный подброс
 			drops.push({
 				// Угол каждой капли свой (вокруг угла дождя, вправо-вверх) →
 				// каждый брызг разлетается по-разному, паттерн не повторяется.
-				vx: -vy * rand(SPLASH_ANGLE - 0.18, SPLASH_ANGLE + 0.22) + rand(-7, 9),
+				vx:
+					-vy * rand(SPLASH_ANGLE - 0.18, SPLASH_ANGLE + 0.22) +
+					rand(-7, 9) * speed,
 				vy,
 				// Почти всегда тёмные капли — чтобы не цепляли взгляд.
 				color: Math.random() < 0.12 ? pick(COL_SPLASH_LT) : pick(COL_SPLASH_DK),
 			})
 		}
-		// Время жизни тоже варьируется — нет единого «такта» у всех брызг.
-		const life = rand(0.36, 0.52)
-		this.groundSplashes.push({ wx, wy, life, max: life, drops })
+		// Короче жизнь → меньше разлёт (size). Скорость задаётся отдельно (speed).
+		const life = rand(0.36, 0.52) * size
+		arr.push({ wx, wy, life, max: life, drops, speed })
+	}
+
+	// Спавнит всплески вдоль видимых частей зон {x,y,w} (мировые) в массив arr.
+	// acc — дробный аккумулятор (поле this), возвращается обновлённым.
+	_spawnFromZones(zones, arr, acc, dt, cam, speed = 1, size = 1) {
+		if (!zones.length) return acc
+		const left = cam.scrollX
+		const right = left + CANVAS_W
+		const segs = []
+		let visW = 0
+		for (const z of zones) {
+			const a = Math.max(z.x, left)
+			const b = Math.min(z.x + z.w, right)
+			const sy = z.y - cam.scrollY
+			if (b > a && sy >= -4 && sy <= CANVAS_H + 4) {
+				segs.push({ a, b, y: z.y })
+				visW += b - a
+			}
+		}
+		acc += visW * this.splashDensity * this.intensity * dt
+		while (acc >= 1 && segs.length) {
+			acc -= 1
+			let r = Math.random() * visW
+			let seg = segs[0]
+			for (const s of segs) {
+				const w = s.b - s.a
+				if (r < w) {
+					seg = s
+					break
+				}
+				r -= w
+			}
+			this._spawnSplash(arr, rand(seg.a, seg.b), seg.y, speed, size)
+		}
+		return acc
+	}
+
+	// Рендерит активные всплески arr в graphics gg (мир→экран). glowAt — подсветка.
+	_renderSplashes(gg, arr, dt, glowAt, cam, lcol) {
+		const GRAV_BASE = 110 // px/s² — низкая: медленный, низкий, растянутый разлёт
+		for (let k = arr.length - 1; k >= 0; k--) {
+			const s = arr[k]
+			const GRAV = GRAV_BASE * (s.speed ?? 1) // гравитация в такт скорости
+			s.life -= dt
+			if (s.life <= 0) {
+				arr.splice(k, 1)
+				continue
+			}
+			const t = s.life / s.max // 1 → 0
+			const age = s.max - s.life
+			const sx = Math.round(s.wx - cam.scrollX)
+			const sy = Math.round(s.wy - cam.scrollY)
+			if (sx < -2 || sx > CANVAS_W + 2 || sy < -2 || sy > CANVAS_H + 2) continue
+
+			const gf = glowAt(sx, sy)
+			lcol = this._glowCol // цвет ближайшей лампы к этому всплеску
+
+			// Тусклая «корона» удара в первой трети жизни.
+			if (t > 0.66) {
+				let cc = pick(COL_SPLASH_DK)
+				let ca = t * 0.3
+				if (gf > 0) {
+					cc = lerpColor(cc, lcol, gf * 0.9)
+					ca = Math.min(1, ca + gf * 0.2)
+				}
+				gg.fillStyle(cc, ca)
+				gg.fillRect(sx, sy - 1, 1, 1)
+				gg.fillRect(sx + 1, sy, 1, 1)
+			}
+
+			// Капли: позиция аналитически из age (вверх+ветер → парабола вниз).
+			const a = Math.min(1, t * 1.3) * 0.38
+			for (const d of s.drops) {
+				const py = Math.round(sy + d.vy * age + 0.5 * GRAV * age * age)
+				if (py > sy) continue // не рисуем ниже точки удара
+				const px = Math.round(sx + d.vx * age)
+				if (px < 0 || px > CANVAS_W || py < 0 || py > CANVAS_H) continue
+				const col = gf > 0 ? lerpColor(d.color, lcol, gf * 0.85) : d.color
+				const da = gf > 0 ? Math.min(1, a + gf * 0.2) : a
+				gg.fillStyle(col, da)
+				gg.fillRect(px, py, 1, 1)
+			}
+		}
 	}
 
 	update(delta) {
@@ -232,24 +333,31 @@ export class RainEffect {
 		const cam = this.scene.cameras.main
 		g.clear()
 		this.gGround?.clear()
+		this.gWire?.clear()
 
-		// ── Источник света в экранных координатах ─────────────────────────────
-		// Капли и крапины рядом с лампой тонируются её цветом и ярче → «свет
-		// динамично падает на дождь» + блики у источника. glowAt(px,py) → 0..1.
-		const L = this.light
-		const lx = L ? L.wx - cam.scrollX : 0
-		const ly = L ? L.wy - cam.scrollY : 0
-		const lr = L ? L.r : 0
-		const lcol = L ? L.color : 0xffffff
+		// ── Источники света в экранных координатах ────────────────────────────
+		// Берём вклад БЛИЖАЙШЕЙ (сильнейшей) лампы; её цвет → this._glowCol для
+		// тонировки. glowAt(px,py) → 0..1. Так разноцветные лампы красят дождь
+		// каждая своим цветом; intensity мигает из GameScene → дождь мерцает.
+		const lights = this.lights || []
 		const glowAt = (px, py) => {
-			if (!L) return 0
-			const dx = px - lx,
-				dy = py - ly
-			const d = Math.sqrt(dx * dx + dy * dy)
-			if (d >= lr) return 0
-			const t = 1 - d / lr
-			// smoothstep (плавный заход/спад) × единый множитель силы подсветки.
-			return t * t * (3 - 2 * t) * GLOW_STRENGTH
+			let best = 0
+			let col = 0xffffff
+			for (const L of lights) {
+				if (!L) continue
+				const dx = px - (L.wx - cam.scrollX)
+				const dy = py - (L.wy - cam.scrollY)
+				const d = Math.sqrt(dx * dx + dy * dy)
+				if (d >= L.r) continue
+				const t = 1 - d / L.r
+				const g = t * t * (3 - 2 * t) * GLOW_STRENGTH * (L.intensity ?? 1)
+				if (g > best) {
+					best = g
+					col = L.color
+				}
+			}
+			this._glowCol = col
+			return best
 		}
 
 		// ── Штрихи дождя ──────────────────────────────────────────────────────
@@ -262,6 +370,7 @@ export class RainEffect {
 			const hy = Math.round(d.y)
 			// Подсветка каплей у лампы — считаем раз по голове капли.
 			const gf = glowAt(hx, hy)
+			const lcol = this._glowCol // цвет ближайшей лампы (set в glowAt)
 			const bodyCol = gf > 0 ? lerpColor(d.color, lcol, gf * 0.85) : d.color
 			const headCol = gf > 0 ? lerpColor(COL_HEAD, lcol, gf * 0.6) : COL_HEAD
 			// От головы (i=0, ярко) к хвосту (i=len, тускло) вверх-вправо.
@@ -296,88 +405,31 @@ export class RainEffect {
 		}
 
 		// ── Брызги на полу (мировые зоны из Tiled) ────────────────────────────
-		if (this.zones.length) {
-			// Видимые отрезки зон в экранном пространстве (zoom=1).
-			const left = cam.scrollX
-			const right = left + CANVAS_W
-			const segs = []
-			let visW = 0
-			for (const z of this.zones) {
-				const a = Math.max(z.x, left)
-				const b = Math.min(z.x + z.w, right)
-				const sy = z.y - cam.scrollY
-				if (b > a && sy >= -4 && sy <= CANVAS_H + 4) {
-					segs.push({ a, b, y: z.y })
-					visW += b - a
-				}
-			}
-			// Спавн: visW * плотность * интенсивность капель/сек.
-			this._splashAcc += visW * this.splashDensity * this.intensity * dt
-			while (this._splashAcc >= 1 && segs.length) {
-				this._splashAcc -= 1
-				// Выбор точки равномерно по суммарной видимой длине.
-				let r = Math.random() * visW
-				let seg = segs[0]
-				for (const s of segs) {
-					const w = s.b - s.a
-					if (r < w) {
-						seg = s
-						break
-					}
-					r -= w
-				}
-				this._spawnGroundSplash(rand(seg.a, seg.b), seg.y)
-			}
+		this._splashAcc = this._spawnFromZones(
+			this.zones,
+			this.groundSplashes,
+			this._splashAcc,
+			dt,
+			cam,
+		)
+		if (this.gGround) {
+			this._renderSplashes(this.gGround, this.groundSplashes, dt, glowAt, cam)
 		}
 
-		// Рендер активных брызг в gGround (под игроками, над тайлами).
-		const gg = this.gGround
-		if (gg) {
-			const GRAV = 110 // px/s² — низкая: медленный, низкий, растянутый разлёт
-			for (let k = this.groundSplashes.length - 1; k >= 0; k--) {
-				const s = this.groundSplashes[k]
-				s.life -= dt
-				if (s.life <= 0) {
-					this.groundSplashes.splice(k, 1)
-					continue
-				}
-				const t = s.life / s.max // 1 → 0
-				const age = s.max - s.life
-				const sx = Math.round(s.wx - cam.scrollX)
-				const sy = Math.round(s.wy - cam.scrollY)
-				if (sx < -2 || sx > CANVAS_W + 2 || sy < -2 || sy > CANVAS_H + 2)
-					continue
-
-				// Подсветка брызга лампой — тем же радиусом/силой, что и дождь.
-				const gf = glowAt(sx, sy)
-
-				// Тусклая «корона» удара в первой трети жизни (тёмная, без яркой
-				// вспышки — чтобы не цеплять взгляд). У лампы тонируется её цветом.
-				if (t > 0.66) {
-					let cc = pick(COL_SPLASH_DK)
-					let ca = t * 0.3
-					if (gf > 0) {
-						cc = lerpColor(cc, lcol, gf * 0.9)
-						ca = Math.min(1, ca + gf * 0.2)
-					}
-					gg.fillStyle(cc, ca)
-					gg.fillRect(sx, sy - 1, 1, 1)
-					gg.fillRect(sx + 1, sy, 1, 1)
-				}
-
-				// Капли: позиция аналитически из age (вверх+ветер → парабола вниз).
-				// Заметно тусклее дождя — брызги читаются как фоновые.
-				const a = Math.min(1, t * 1.3) * 0.38
-				for (const d of s.drops) {
-					const py = Math.round(sy + d.vy * age + 0.5 * GRAV * age * age)
-					if (py > sy) continue // не рисуем ниже пола
-					const px = Math.round(sx + d.vx * age)
-					if (px < 0 || px > CANVAS_W || py < 0 || py > CANVAS_H) continue
-					const col = gf > 0 ? lerpColor(d.color, lcol, gf * 0.85) : d.color
-					const da = gf > 0 ? Math.min(1, a + gf * 0.2) : a
-					gg.fillStyle(col, da)
-					gg.fillRect(px, py, 1, 1)
-				}
+		// ── Брызги на проводах (зоны = верхняя кромка провода, задаются снаружи) ─
+		// Включается переключателем WIRE_SPLASHES. speed 1, size 0.45 → компактные.
+		if (WIRE_SPLASHES === 'On') {
+			this._wireSplashAcc = this._spawnFromZones(
+				this.wireZones,
+				this.wireSplashes,
+				this._wireSplashAcc,
+				dt,
+				cam,
+				1,
+				0.45,
+			)
+			if (this.gWire) {
+				this._renderSplashes(this.gWire, this.wireSplashes, dt, glowAt, cam)
 			}
 		}
 	}
@@ -387,9 +439,12 @@ export class RainEffect {
 		this.g = null
 		this.gGround?.destroy()
 		this.gGround = null
+		this.gWire?.destroy()
+		this.gWire = null
 		this.drops.length = 0
 		this.specks.length = 0
 		this.splashes.length = 0
 		this.groundSplashes.length = 0
+		this.wireSplashes.length = 0
 	}
 }

@@ -1,0 +1,1 @@
+Положи сюда файл шрифта: epilepsy-sans.ttf (Epilepsy Sans, пиксельный, с кириллицей). Если имя/формат другой — поправь @font-face src в src/style.css.

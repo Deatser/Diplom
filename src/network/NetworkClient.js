@@ -31,7 +31,18 @@ class NetworkClient {
     this.socket.on('game:levelComplete',() => { console.log('[nc] levelComplete'); this._emit('levelComplete') })
     this.socket.on('game:playerDied',   () => { console.log('[nc] playerDied');   this._emit('playerDied') })
     this.socket.on('game:deathRestart', () => { console.log('[nc] deathRestart'); this._emit('deathRestart') })
+    this.socket.on('game:revive',       () => { console.log('[nc] revive');       this._emit('revive') })
+    this.socket.on('game:orbCollected', () => this._emit('orbCollected'))
+    this.socket.on('game:abilityClose', () => this._emit('abilityClose'))
+    this.socket.on('game:lampLever',    () => this._emit('lampLever'))
+    this.socket.on('game:leverDoor',    d  => this._emit('leverDoor', d))
+    this.socket.on('game:finalReach',   d  => this._emit('finalReach', d))
+    this.socket.on('game:visualSync',   d => this._emit('visualSync', d))
+    this.socket.on('game:flickerStep',  d => this._emit('flickerStep', d))
+    this.socket.on('game:flickerClick', () => this._emit('flickerClick'))
+    this.socket.on('game:playerSfx',    d => this._emit('playerSfx', d))
     this.socket.on('room:levelSelected',d => this._emit('room:levelSelected', d))
+    this.socket.on('room:avatarAnim',   d => this._emit('room:avatarAnim', d))
   }
 
   on(event, fn) {
@@ -51,10 +62,21 @@ class NetworkClient {
   levelComplete()      { if (this.roomId) this.socket?.emit('game:levelComplete', { roomId: this.roomId }) }
   playerDied()         { if (this.roomId) this.socket?.emit('game:playerDied',    { roomId: this.roomId }) }
   deathRestart()       { if (this.roomId) this.socket?.emit('game:deathRestart',  { roomId: this.roomId }) }
+  revive()             { if (this.roomId) this.socket?.emit('game:revive',        { roomId: this.roomId }) }
+  orbCollected()       { if (this.roomId) this.socket?.emit('game:orbCollected',  { roomId: this.roomId }) }
+  abilityClose()       { if (this.roomId) this.socket?.emit('game:abilityClose',  { roomId: this.roomId }) }
+  lampLever()          { if (this.roomId) this.socket?.emit('game:lampLever',      { roomId: this.roomId }) }
+  leverDoor(open)      { if (this.roomId) this.socket?.emit('game:leverDoor',      { roomId: this.roomId, open }) }
+  finalReach(reached)  { if (this.roomId) this.socket?.emit('game:finalReach',     { roomId: this.roomId, reached }) }
+  sendVisualSync(state){ if (this.roomId) this.socket?.emit('game:visualSync',     { roomId: this.roomId, state }) }
+  sendFlickerStep(factor) { if (this.roomId) this.socket?.emit('game:flickerStep', { roomId: this.roomId, factor }) }
+  sendFlickerClick()     { if (this.roomId) this.socket?.emit('game:flickerClick', { roomId: this.roomId }) }
+  playerSfx(name, vol)   { if (this.roomId) this.socket?.emit('game:playerSfx', { roomId: this.roomId, name, vol }) }
   getRooms()           { this.socket?.emit('lobby:getRooms') }
   createRoom(name, level = 1, playtime = 0) { this.socket?.emit('lobby:createRoom', { name, level, playtime }) }
   joinRoom(roomId)     { this.socket?.emit('lobby:joinRoom', { roomId }) }
   renameRoom(name)     { this.socket?.emit('lobby:renameRoom', { roomId: this.roomId, name }) }
+  sendAvatarAnim(role, cls) { if (this.roomId) this.socket?.emit('room:avatarAnim', { roomId: this.roomId, role, cls }) }
   leaveRoom()          { if (this.roomId) { this.socket?.emit('lobby:leaveRoom', { roomId: this.roomId }); this.roomId = null; this.role = null } }
   sendInput(input)     { this.socket?.emit('player:input', { roomId: this.roomId, input }) }
   sendSnapshot(state)  { this.socket?.emit('game:stateSnapshot', { roomId: this.roomId, state }) }

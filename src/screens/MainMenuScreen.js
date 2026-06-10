@@ -1,4 +1,5 @@
 import { showScreen } from '../main.js'
+import { i18n } from '../utils/i18n.js'
 
 export class MainMenuScreen {
   constructor() {
@@ -56,10 +57,10 @@ export class MainMenuScreen {
     modal.className = 'confirm-modal'
     modal.innerHTML = `
       <div class="confirm-box">
-        <p class="confirm-text">Выйти из игры?</p>
+        <p class="confirm-text">${i18n.t('confirm.quit')}</p>
         <div class="confirm-buttons">
-          <button class="confirm-yes">Да</button>
-          <button class="confirm-no">Нет</button>
+          <button class="confirm-yes">${i18n.t('confirm.yes')}</button>
+          <button class="confirm-no">${i18n.t('confirm.no')}</button>
         </div>
       </div>`
     document.body.appendChild(modal)

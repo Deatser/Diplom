@@ -2,12 +2,12 @@ import { showScreen } from '../main.js'
 import { networkClient } from '../network/NetworkClient.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { startGame } from '../game/GameManager.js'
+import { i18n } from '../utils/i18n.js'
 
 export class LevelSelectScreen {
   constructor() {
     this.el          = document.getElementById('screen-level-select')
     this.nameDisplay = document.getElementById('server-name-display')
-    this.renameBtn   = document.getElementById('rename-btn')
     this.renameInput = document.getElementById('rename-input')
     this.guestLabel  = document.getElementById('guest-label')
     this.guestAvatar = document.querySelector('.player-avatar.orange')
@@ -21,6 +21,39 @@ export class LevelSelectScreen {
     this.roomName      = ''
     this.maxLevel      = 1
     this._onKey        = this._onKeyDown.bind(this)
+    this._avatarTimers = []
+  }
+
+  // Случайные анимации рыцарей: раз в 3–7с удар или блок (ходьбу/смерть не трогаем).
+  // Каждый клиент рандомит только СВОЕГО рыцаря и шлёт событие партнёру,
+  // поэтому синий машет одинаково на обоих компах (и оранжевый тоже).
+  _startAvatarAnims() {
+    const anims = [
+      { cls: 'anim-attack', ms: 720 },
+      { cls: 'anim-block',  ms: 540 },
+    ]
+    const schedule = () => {
+      const t = setTimeout(() => {
+        const a = anims[Math.floor(Math.random() * anims.length)]
+        this._playAvatarAnim(this.role, a)
+        networkClient.sendAvatarAnim(this.role, a.cls)
+        schedule()
+      }, 3000 + Math.random() * 4000)
+      this._avatarTimers.push(t)
+    }
+    schedule()
+    // Анимации рыцаря партнёра приходят по сети
+    this._unsub.push(networkClient.on('room:avatarAnim', ({ role, cls }) => {
+      const a = anims.find(x => x.cls === cls)
+      if (a) this._playAvatarAnim(role, a)
+    }))
+  }
+
+  _playAvatarAnim(role, { cls, ms }) {
+    const av = this.el.querySelector(role === 'host' ? '.player-avatar.blue' : '.player-avatar.orange')
+    if (!av || av.classList.contains('dim')) return
+    av.classList.add(cls)
+    this._avatarTimers.push(setTimeout(() => av.classList.remove(cls), ms))
   }
 
   show({ roomId, roomName, role, guestJoined: alreadyJoined, maxLevel, selectedLevel } = {}) {
@@ -29,15 +62,17 @@ export class LevelSelectScreen {
     this.el.classList.remove('hidden')
     this.role     = role || 'host'
     this.roomId   = roomId || networkClient.roomId
-    this.roomName = roomName || `Мир${Math.floor(Math.random()*900000+100000)}`
+    this.roomName = roomName || `${i18n.t('ls.world')}${Math.floor(Math.random()*900000+100000)}`
     this.maxLevel = maxLevel || 1
 
     this.guestJoined = (this.role === 'guest') || !!alreadyJoined
     this.guestAvatar.classList.toggle('dim', !this.guestJoined)
-    this.guestLabel.textContent = this.guestJoined ? 'Гость' : 'Ожидание...'
+    this.guestLabel.textContent = this.guestJoined ? i18n.t('ls.guest') : i18n.t('ls.waiting')
 
     this.nameDisplay.textContent = this.roomName
-    this.renameBtn.style.display = (this.role === 'host') ? '' : 'none'
+    // Хосту имя кликабельно (пунктир-подчёркивание = «можно переименовать»)
+    this.nameDisplay.classList.toggle('renamable', this.role === 'host')
+    this.nameDisplay.title = this.role === 'host' ? i18n.t('ls.rename_tip') : ''
 
     // Use server-provided selectedLevel if available, else default to maxLevel
     this.selectedLevel = selectedLevel || Math.min(this.maxLevel, 10)
@@ -46,6 +81,7 @@ export class LevelSelectScreen {
     this._setupRename()
     this._updateRoleIndicator()
     this._updateHint()
+    this._startAvatarAnims()
 
     window.addEventListener('keydown', this._onKey)
 
@@ -61,7 +97,7 @@ export class LevelSelectScreen {
     this._unsub.push(networkClient.on('room:playerJoined', () => {
       this.guestJoined = true
       this.guestAvatar.classList.remove('dim')
-      this.guestLabel.textContent = 'Гость'
+      this.guestLabel.textContent = i18n.t('ls.guest')
       this._updateStart()
       // Immediately sync current level selection to newly joined guest
       if (this.role === 'host') {
@@ -76,7 +112,7 @@ export class LevelSelectScreen {
       } else {
         this.guestJoined = false
         this.guestAvatar.classList.add('dim')
-        this.guestLabel.textContent = 'Ожидание...'
+        this.guestLabel.textContent = i18n.t('ls.waiting')
         this._updateStart()
       }
     }))
@@ -128,6 +164,9 @@ export class LevelSelectScreen {
   _cleanup() {
     this._unsub.forEach(u => u()); this._unsub = []
     window.removeEventListener('keydown', this._onKey)
+    this._avatarTimers.forEach(t => clearTimeout(t)); this._avatarTimers = []
+    this.el.querySelectorAll('.player-avatar').forEach(av =>
+      av.classList.remove('anim-attack', 'anim-block'))
   }
 
   _onKeyDown(e) {
@@ -163,7 +202,7 @@ export class LevelSelectScreen {
       return `
         <div class="level-card ${unlocked ? 'unlocked' : 'locked'} ${sel}" data-level="${n}">
           <span class="level-num">${n}</span>
-          <span class="level-lock">${unlocked ? '▶' : '🔒'}</span>
+          <span class="level-lock">${unlocked ? '✦' : '✧'}</span>
         </div>`
     }).join('')
 
@@ -184,16 +223,16 @@ export class LevelSelectScreen {
   _updateStart() {
     const canStart = (this.role === 'host') && this.guestJoined
     this.startBtn.disabled = !canStart
-    this.startBtn.title = canStart ? '' : 'Ожидание второго игрока...'
+    this.startBtn.title = canStart ? '' : i18n.t('ls.waiting_second')
   }
 
   _setupRename() {
+    this.nameDisplay.onclick = null // сброс: после сессии хостом гость не должен кликать
     if (this.role !== 'host') return
-    this.renameBtn.onclick = () => {
+    this.nameDisplay.onclick = () => {
       this.renameInput.value = this.roomName
       this.renameInput.classList.remove('hidden')
       this.nameDisplay.style.display = 'none'
-      this.renameBtn.style.display = 'none'
       this.renameInput.focus()
     }
     const commit = () => {
@@ -202,7 +241,6 @@ export class LevelSelectScreen {
       this.nameDisplay.textContent = name
       this.renameInput.classList.add('hidden')
       this.nameDisplay.style.display = ''
-      this.renameBtn.style.display = ''
       const slot = window.__currentSlot
       if (slot !== undefined) SaveSystem.setSave(slot, { roomName: name })
       networkClient.renameRoom(name)
@@ -215,8 +253,8 @@ export class LevelSelectScreen {
     const hint = document.getElementById('level-select-hint')
     if (!hint) return
     hint.textContent = this.role === 'host'
-      ? 'Выберите уровень'
-      : 'Ждём, когда хост выберет уровень'
+      ? i18n.t('ls.choose')
+      : i18n.t('ls.waiting_host_choose')
   }
 
   // Show notification when host leaves the room
@@ -226,8 +264,8 @@ export class LevelSelectScreen {
     modal.className = 'host-left-modal'
     modal.innerHTML = `
       <div class="host-left-box">
-        <p class="host-left-msg">Хост покинул игру</p>
-        <button class="host-left-ok">ОК</button>
+        <p class="host-left-msg">${i18n.t('ls.host_left')}</p>
+        <button class="host-left-ok">${i18n.t('ls.ok')}</button>
       </div>`
     document.body.appendChild(modal)
     modal.querySelector('.host-left-ok').onclick = () => {

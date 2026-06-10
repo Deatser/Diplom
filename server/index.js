@@ -157,6 +157,54 @@ io.on('connection', socket => {
     socket.to(roomId).emit('game:deathRestart')
   })
 
+  socket.on('game:revive', ({ roomId }) => {
+    console.log(`[server] revive room=${roomId} from=${socket.id}`)
+    socket.to(roomId).emit('game:revive')
+  })
+
+  socket.on('game:orbCollected', ({ roomId }) => {
+    socket.to(roomId).emit('game:orbCollected')
+  })
+
+  socket.on('game:abilityClose', ({ roomId }) => {
+    socket.to(roomId).emit('game:abilityClose')
+  })
+
+  socket.on('game:lampLever', ({ roomId }) => {
+    socket.to(roomId).emit('game:lampLever')
+  })
+
+  socket.on('game:leverDoor', ({ roomId, open }) => {
+    socket.to(roomId).emit('game:leverDoor', { open })
+  })
+
+  socket.on('game:finalReach', ({ roomId, reached }) => {
+    socket.to(roomId).emit('game:finalReach', { reached })
+  })
+
+  // Звуки движения игрока (шаги/прыжок/приземление/дэш) — ретранслируем партнёру.
+  socket.on('game:playerSfx', ({ roomId, name, vol }) => {
+    socket.to(roomId).emit('game:playerSfx', { name, vol })
+  })
+
+  socket.on('game:visualSync', ({ roomId, state }) => {
+    socket.to(roomId).emit('game:visualSync', state)
+  })
+
+  // Анимация аватара на экране выбора уровня — ретранслируем партнёру,
+  // чтобы рыцарь игрока махал синхронно на обоих компах.
+  socket.on('room:avatarAnim', ({ roomId, role, cls }) => {
+    socket.to(roomId).emit('room:avatarAnim', { role, cls })
+  })
+
+  socket.on('game:flickerStep', ({ roomId, factor }) => {
+    socket.to(roomId).emit('game:flickerStep', { factor })
+  })
+
+  socket.on('game:flickerClick', ({ roomId }) => {
+    socket.to(roomId).emit('game:flickerClick')
+  })
+
   socket.on('player:input', ({ roomId, input }) => {
     socket.to(roomId).emit('player:input', { playerId: socket.id, input })
   })

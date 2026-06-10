@@ -1,12 +1,16 @@
 import Phaser from 'phaser'
 import { PreloadScene } from './scenes/PreloadScene.js'
 import { GameScene }    from './scenes/GameScene.js'
-import { hideAllForGame, showScreen, showScreenFromGame } from '../main.js'
+import { hideAllForGame, showScreen, showScreenFromGame, setCursorHidden } from '../main.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { networkClient } from '../network/NetworkClient.js'
+import Sfx from '../systems/Sfx.js'
+import Transition from '../systems/Transition.js'
+import { i18n } from '../utils/i18n.js'
 
 let _game = null
 let _pauseScene = null  // reference to active GameScene for exit button
+let _tickWorker = null  // Web Worker — держит setInterval в фоновых вкладках
 
 // Parse "2560x1440" → {w:2560, h:1440}
 function _parseRes(str = '1920x1080') {
@@ -20,6 +24,7 @@ export function togglePause(scene) {
   const el = document.getElementById('pause-menu')
   if (el.classList.contains('hidden')) {
     // Open pause: disable game input
+    Sfx.play('slide') // звук открытия паузы
     if (_pauseScene) _pauseScene._gamePaused = true
     _openPause()
   } else {
@@ -29,6 +34,7 @@ export function togglePause(scene) {
 }
 
 function _openPause() {
+  setCursorHidden(false)
   document.getElementById('pause-menu').classList.remove('hidden')
 
   // Продолжить: hide menu + resume input
@@ -47,18 +53,19 @@ function _openPause() {
 // resumeGame=true re-enables input; false keeps game paused (e.g. when opening settings)
 function _closePause(resumeGame = true) {
   document.getElementById('pause-menu').classList.add('hidden')
+  if (resumeGame) setCursorHidden(true)
   if (resumeGame && _pauseScene) _pauseScene._gamePaused = false
 }
 
 function _showPauseExitConfirm() {
   const modal = document.createElement('div')
-  modal.className = 'confirm-modal'
+  modal.className = 'confirm-modal confirm-framed'
   modal.innerHTML = `
     <div class="confirm-box">
-      <p class="confirm-text">Выйти в меню выбора уровня?</p>
+      <p class="confirm-text">${i18n.t('confirm.exit_level')}</p>
       <div class="confirm-buttons">
-        <button class="confirm-yes">Да</button>
-        <button class="confirm-no">Нет</button>
+        <button class="confirm-yes">${i18n.t('confirm.yes')}</button>
+        <button class="confirm-no">${i18n.t('confirm.no')}</button>
       </div>
     </div>`
   document.body.appendChild(modal)
@@ -73,8 +80,14 @@ function _showPauseExitConfirm() {
   modal.querySelector('.confirm-no').onclick = () => modal.remove()
 }
 
-// Called by LevelSelectScreen when host starts, and by network when guest receives game:start
+// Called by LevelSelectScreen when host starts, and by network when guest receives game:start.
+// Лобби плавно чернеет (1с), уровень собирается за чёрным, затем GameScene.create()
+// плавно проявляет его (Transition.fadeIn). Бесшовно.
 export function startGame(levelId, role) {
+  Transition.fadeOut(() => _doStartGame(levelId, role), 1000)
+}
+
+function _doStartGame(levelId, role) {
   hideAllForGame()
   document.getElementById('game-container').classList.remove('hidden')
   document.getElementById('hud').classList.remove('hidden')
@@ -84,7 +97,13 @@ export function startGame(levelId, role) {
   // Track session start time for playtime tracking (reset when starting fresh game)
   if (!window.__sessionStart) window.__sessionStart = Date.now()
 
+  // ── Разрешение из настроек ── (фреймбуфер пересоздаётся и на лету,
+  // см. applyGameResolution — здесь только синхронизация при старте уровня)
+  const _res = SaveSystem.getSettings().video?.resolution
+    || `${window.screen.width}x${window.screen.height}`
+
   if (_game) {
+    applyGameResolution()
     // Restart existing Phaser instance with new scene data
     const gs = _game.scene.getScene('GameScene')
     if (gs && gs.scene.isActive()) {
@@ -97,31 +116,161 @@ export function startGame(levelId, role) {
     return
   }
 
+  const { w: _resW, h: _resH } = _parseRes(_res)
   _game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game-container',
     backgroundColor: '#060d1a',
-    pixelArt: true,      // crisp nearest-neighbour — no blurring, true pixel art look
-    // roundPixels убран: на холсте 320×180 при ×8 масштабе разница дробного пикселя = 1/8 экранного px.
-    // pixelArt:true уже даёт чёткость через nearest-neighbour; roundPixels мешал плавной анимации фона.
+    pixelArt: true,
+    autoFocus: false,     // не паузить игровой цикл при потере фокуса вкладки
     physics: {
       default: 'arcade',
-      // HK-style snappy gravity (was 900 — too floaty)
-      // Gravity in 320×180 space: 1400÷4 = 350
-      // (same feel — all physics coords scale with native resolution)
-      arcade: { gravity: { y: 900 }, debug: false }
+      arcade: { gravity: { y: 1100 }, debug: false }
     },
     scene: [PreloadScene, GameScene],
+    render: {
+      // Гарантирует валидный буфер для покадрового drawImage в lowres-канвас
+      preserveDrawingBuffer: true,
+    },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
-      width:  320,  // fixed "big pixel" canvas — Scale.FIT multiplies up per monitor
-      height: 180,  // 2K=×8, 1080p=×6, 720p=×4 | setMaxSize in GameScene caps per settings
+      width:  320,
+      height: 180,
+    },
+    callbacks: {
+      postBoot: game => {
+        game.__resCap = _res
+        _setupLowResFramebuffer(game, _resW, _resH)
+        _setupAspectFill(game)
+        game.events.once(Phaser.Core.Events.DESTROY, () => game.__lowresCleanup?.())
+        // Отключаем встроенную паузу Phaser на BLUR/HIDDEN
+        game.events.off('hidden')
+        game.events.off('blur')
+
+        // Web Worker тикает setInterval(16ms) даже в фоновой вкладке.
+        // На каждый тик мы вручную шагаем Phaser-loop, если rAF перестал дёргаться.
+        _tickWorker = new Worker('/game-tick-worker.js')
+        let lastWorkerTick = 0
+        _tickWorker.onmessage = () => {
+          if (!game.loop) return
+          const now = performance.now()
+          // Если браузер дроссирует rAF (вкладка скрыта) — шагаем сами.
+          // Критерий: с последнего нашего тика прошло > 50мс (т.е. rAF не бьёт ~60fps).
+          if (now - game.loop.lastTime > 50) {
+            game.loop.step(now)
+          }
+          lastWorkerTick = now
+        }
+        _tickWorker.postMessage('start')
+      }
     }
   })
 }
 
+// ── Заполнение экрана в оконном режиме на 16:9 мониторе ─────────────────────
+// Scale.FIT держит соотношение 320:180 (=16:9). В фуллскрине вьюпорт ровно
+// 16:9 → полос нет. В окне браузер съедает высоту хромом → вьюпорт шире 16:9 →
+// FIT даёт полосы по краям. На 16:9 мониторе вне фуллскрина вешаем класс
+// .aspect-fill (CSS растягивает канвас на весь вьюпорт — лёгкое растяжение
+// вместо полос). На не-16:9 мониторе (напр. 9:16) и в фуллскрине — не трогаем.
+function _setupAspectFill(game) {
+  const cont = document.getElementById('game-container')
+  if (!cont) return
+  const is169 = () => {
+    const r = window.screen.width / window.screen.height
+    return Math.abs(r - 16 / 9) < 0.06
+  }
+  const isFullscreen = () =>
+    !!(document.fullscreenElement || document.webkitFullscreenElement)
+  const apply = () => {
+    if (is169() && !isFullscreen()) cont.classList.add('aspect-fill')
+    else cont.classList.remove('aspect-fill')
+  }
+  apply()
+  window.addEventListener('resize', apply)
+  document.addEventListener('fullscreenchange', apply)
+  game.events.once(Phaser.Core.Events.DESTROY, () => {
+    window.removeEventListener('resize', apply)
+    document.removeEventListener('fullscreenchange', apply)
+    cont.classList.remove('aspect-fill')
+  })
+}
+
+// ── Низкое разрешение как в нативных играх ──────────────────────────────────
+// CSS-растяжки НЕ добавляют пикселизации: браузер сэмплирует битмап канваса
+// один раз в финальный размер. Поэтому делаем настоящий промежуточный
+// фреймбуфер: канвас resW×resH, куда каждый кадр блитится картинка игры
+// (чёткими пикселями), а на экран он растягивается уже со сглаживанием —
+// при 1280x720 на 2К картинка реально мыльнее/грубее.
+function _setupLowResFramebuffer(game, resW, resH) {
+  // Снять предыдущий фреймбуфер (живая смена разрешения из паузы)
+  game.__lowresCleanup?.()
+  game.__lowresCleanup = null
+
+  // Разрешение не меньше монитора → даунскейла нет, рисуем как обычно
+  if (resW >= window.screen.width && resH >= window.screen.height) return
+
+  const cont = document.getElementById('game-container')
+  const lr = document.createElement('canvas')
+  lr.width = resW
+  lr.height = resH
+  lr.style.position = 'absolute'
+  lr.style.pointerEvents = 'none'
+  // Первым ребёнком: .game-light (DOM-свет) и виньетка остаются поверх
+  cont.insertBefore(lr, cont.firstChild)
+  const ctx = lr.getContext('2d')
+
+  // Letterbox 16:9 тем же правилом, что Scale.FIT у Phaser-канваса
+  const layout = () => {
+    const sw = window.innerWidth, sh = window.innerHeight
+    const k = Math.min(sw / resW, sh / resH)
+    const cw = Math.round(resW * k), ch = Math.round(resH * k)
+    lr.style.left = `${(sw - cw) / 2}px`
+    lr.style.top  = `${(sh - ch) / 2}px`
+    lr.style.width  = `${cw}px`
+    lr.style.height = `${ch}px`
+  }
+  layout()
+  window.addEventListener('resize', layout)
+
+  // Phaser-канвас делаем невидимым (но он на месте и ловит input);
+  // картинку игрок видит через lowres-канвас
+  game.canvas.style.opacity = '0'
+
+  const blit = () => {
+    ctx.imageSmoothingEnabled = false // 320×180 → resW×resH: чёткие пиксели
+    ctx.drawImage(game.canvas, 0, 0, resW, resH)
+  }
+  game.events.on(Phaser.Core.Events.POST_RENDER, blit)
+  game.__lowresCleanup = () => {
+    game.events.off(Phaser.Core.Events.POST_RENDER, blit)
+    window.removeEventListener('resize', layout)
+    lr.remove()
+    game.canvas.style.opacity = ''
+    game.__lowresCleanup = null
+  }
+}
+
+// Применить текущее разрешение из настроек к ЗАПУЩЕННОЙ игре (живо, без
+// перезахода в уровень). Вызывается из настроек при смене/откате разрешения.
+export function applyGameResolution() {
+  if (!_game) return
+  const res = SaveSystem.getSettings().video?.resolution
+    || `${window.screen.width}x${window.screen.height}`
+  if (_game.__resCap === res) return
+  _game.__resCap = res
+  const { w, h } = _parseRes(res)
+  _setupLowResFramebuffer(_game, w, h)
+}
+
 export function exitToLevelSelect() {
+  // Воркер живёт столько же, сколько _game — при выходе он больше не нужен
+  if (_tickWorker) { _tickWorker.postMessage('stop'); _tickWorker = null }
+  // Ядерная страховка: глушим все игровые звуки через глобальный sound manager
+  // (на случай если shutdown() сцены не успел или был вызван обход через exitToLevelSelect)
+  _game?.sound?.stopByKey('rain-amb')
+  _game?.sound?.stopByKey('lamp-hum')
   document.getElementById('game-container').classList.add('hidden')
   document.getElementById('hud').classList.add('hidden')
   // Гарантированно очистить HUD-оверлеи — на случай если shutdown() не успел

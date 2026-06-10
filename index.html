@@ -4,6 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Left 2 Solve</title>
+		<link rel="icon" type="image/png" href="/assets/stuff/ava.png" />
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
@@ -14,11 +15,29 @@
 	</head>
 	<body>
 		<div id="particles"></div>
+		<!-- Тёмная дымка по краям меню (декор поверх фоновой картинки) -->
+		<div id="menu-fog">
+			<div class="fog fog-bl"></div>
+			<div class="fog fog-br"></div>
+			<div class="fog fog-tl"></div>
+			<div class="fog fog-tr"></div>
+			<div class="fog fog-l"></div>
+			<div class="fog fog-r"></div>
+			<!-- Мелкие тёмные облачка (слой 1) -->
+			<div class="fog-cloud fog-cloud-1"></div>
+			<div class="fog-cloud fog-cloud-2"></div>
+			<div class="fog-cloud fog-cloud-3"></div>
+			<!-- Светлые облачка (слой 2, быстрее) -->
+			<div class="fog-cloud fog-cloud-light fog-cloud-l1"></div>
+			<div class="fog-cloud fog-cloud-light fog-cloud-l2"></div>
+			<div class="fog-cloud fog-cloud-light fog-cloud-l3"></div>
+			<div class="fog-cloud fog-cloud-light fog-cloud-l4"></div>
+			<div class="fog-cloud fog-cloud-light fog-cloud-l5"></div>
+		</div>
 		<!-- Phaser canvas container -->
 		<div id="game-container" class="hidden"></div>
 		<!-- In-game HUD -->
 		<div id="hud" class="hidden">
-			<div id="hud-abilities"></div>
 			<div id="hud-prompts"></div>
 			<div id="hud-overlay"></div>
 		</div>
@@ -27,12 +46,12 @@
 		<div id="pause-menu" class="hidden">
 			<div class="pause-backdrop"></div>
 			<div class="pause-container">
-				<h2 class="pause-title">Пауза</h2>
-				<div class="menu-ornament">❖──────────────❖</div>
+				<h2 class="pause-title" data-i18n="pause.title">Пауза</h2>
+				<div class="menu-ornament-brush brush-sm"></div>
 				<nav class="menu-nav">
-					<button class="menu-item" id="pause-resume">Продолжить</button>
-					<button class="menu-item" id="pause-settings">Настройки</button>
-					<button class="menu-item" id="pause-exit">Выйти в меню</button>
+					<button class="menu-item" id="pause-resume" data-i18n="pause.resume">Продолжить</button>
+					<button class="menu-item" id="pause-settings" data-i18n="pause.settings">Настройки</button>
+					<button class="menu-item" id="pause-exit" data-i18n="pause.exit">Выйти в меню</button>
 				</nav>
 			</div>
 		</div>
@@ -42,12 +61,12 @@
 			<div class="menu-container">
 				<div class="menu-title-wrap">
 					<h1 class="menu-title">Left 2 Solve</h1>
-					<div class="menu-ornament">❖──────────────❖</div>
+					<div class="menu-ornament-brush"></div>
 				</div>
 				<nav class="menu-nav" id="main-nav">
-					<button class="menu-item" data-action="start">Начать игру</button>
-					<button class="menu-item" data-action="settings">Настройки</button>
-					<button class="menu-item" data-action="quit">Выход</button>
+					<button class="menu-item" data-action="start" data-i18n="menu.start">Начать игру</button>
+					<button class="menu-item" data-action="settings" data-i18n="menu.settings">Настройки</button>
+					<button class="menu-item" data-action="quit" data-i18n="menu.quit">Выход</button>
 				</nav>
 				<div class="menu-version">v0.1.0</div>
 			</div>
@@ -56,16 +75,17 @@
 		<!-- Настройки -->
 		<div id="screen-settings" class="screen hidden">
 			<div class="settings-container">
-				<h2 class="settings-title">Настройки</h2>
-				<div class="settings-ornament">❖──────────────❖</div>
+				<h2 class="settings-title" data-i18n="settings.title">Настройки</h2>
+				<div class="menu-ornament-brush brush-sm"></div>
 				<nav class="menu-nav" id="settings-nav">
-					<button class="menu-item" data-section="language">Язык</button>
-					<button class="menu-item" data-section="audio">Звук</button>
-					<button class="menu-item" data-section="video">Видео</button>
-					<button class="menu-item" data-section="keyboard">Клавиатура</button>
+					<button class="menu-item" data-section="language" data-i18n="settings.lang">Язык</button>
+					<button class="menu-item" data-section="audio" data-i18n="settings.audio">Звук</button>
+					<button class="menu-item" data-section="video" data-i18n="settings.video">Видео</button>
+					<button class="menu-item" data-section="keyboard" data-i18n="settings.keyboard">Клавиатура</button>
+					<button class="menu-item" data-section="gameplay" data-i18n="settings.gameplay">Игра</button>
 				</nav>
 				<div id="settings-panel" class="settings-panel hidden"></div>
-				<button class="menu-item" id="settings-back-btn">Назад</button>
+				<button class="menu-item" id="settings-back-btn" data-i18n="settings.back">Назад</button>
 			</div>
 		</div>
 
@@ -73,21 +93,23 @@
 		<div id="screen-lobby" class="screen hidden">
 			<div class="lobby-wrap">
 				<div class="lobby-left">
-					<h2 class="lobby-panel-title">Доступные серверы</h2>
+					<h2 class="lobby-panel-title" data-i18n="lobby.servers">Доступные серверы</h2>
 					<input
 						type="text"
 						id="server-search"
 						class="lobby-search"
+						data-i18n-ph="lobby.search"
 						placeholder="Поиск по названию..."
 					/>
 					<div id="server-list" class="server-list"></div>
 				</div>
 				<div class="lobby-divider"></div>
 				<div class="lobby-right">
-					<h2 class="lobby-panel-title">Выберите профиль</h2>
+					<h2 class="lobby-panel-title" data-i18n="lobby.profile">Создайте сервер</h2>
 					<div id="save-slots" class="save-slots"></div>
 				</div>
 			</div>
+			<button id="lobby-back-btn" class="menu-item" data-i18n="lobby.back">Назад</button>
 		</div>
 
 		<!-- Выбор уровня (заглушка) -->
@@ -97,9 +119,6 @@
 					<span id="server-name-display" class="server-name-text"
 						>Мир000000</span
 					>
-					<button id="rename-btn" class="rename-btn" title="Переименовать">
-						✏️
-					</button>
 					<input
 						type="text"
 						id="rename-input"
@@ -111,15 +130,17 @@
 				<div class="players-row">
 					<div class="player-slot host">
 						<div class="player-avatar blue"></div>
-						<span>Хост</span>
+						<span data-i18n="ls.host">Хост</span>
 					</div>
 					<div class="player-slot guest" id="guest-slot">
 						<div class="player-avatar orange dim"></div>
 						<span id="guest-label">Ожидание...</span>
 					</div>
 				</div>
-				<div class="levels-grid" id="levels-grid"></div>
-				<button class="start-btn" id="start-game-btn" disabled>Начать</button>
+				<div class="level-center">
+					<div class="levels-grid" id="levels-grid"></div>
+					<button class="start-btn" id="start-game-btn" data-i18n="ls.start" disabled>Начать</button>
+				</div>
 			</div>
 		</div>
 

@@ -1,3 +1,12 @@
+/* Пиксельный шрифт с кириллицей для текстов взаимодействия (Подобрать/Осмотреть)
+   и finaltext. Файл положить в public/assets/fonts/epilepsy-sans.ttf
+   (поддерживаются .ttf/.otf/.woff2 — поправь src под свой файл). */
+@font-face {
+	font-family: 'Epilepsy Sans';
+	src: url('/assets/fonts/epilepsy-sans.ttf') format('truetype');
+	font-display: swap;
+}
+
 :root {
 	--bg: #080d18;
 	--bg2: #0d1525;
@@ -9,6 +18,8 @@
 	--panel: rgba(255, 255, 255, 0.04);
 	--border: rgba(255, 255, 255, 0.1);
 	--font: 'Cinzel', 'Forum', serif;
+	/* Пиксельный шрифт для интеракшн-текстов и finaltext (см. @font-face выше). */
+	--font-pixel: 'Epilepsy Sans', monospace;
 }
 
 * {
@@ -18,13 +29,23 @@
 }
 
 body {
-	background: var(--bg);
+	/* Фон главного меню: картинка + затемнение (градиент-слой поверх),
+	   запасной цвет виден пока png грузится */
+	background:
+		linear-gradient(rgba(3, 6, 12, 0.55), rgba(3, 6, 12, 0.55)),
+		var(--bg) url('/assets/stuff/back1.png') center / cover no-repeat;
 	color: var(--text);
 	font-family: var(--font);
 	width: 100vw;
 	height: 100vh;
 	overflow: hidden;
 	user-select: none;
+}
+
+/* Hollow Knight: курсор скрыт во время геймплея, виден в меню/паузе/настройках/смерти */
+body.cursor-hidden,
+body.cursor-hidden * {
+	cursor: none !important;
 }
 
 /* ── Game canvas ── */
@@ -37,6 +58,90 @@ body {
 }
 #game-container.hidden {
 	display: none !important;
+}
+/* Оконный режим на 16:9 мониторе: растягиваем канвас на весь вьюпорт, чтобы
+   не было полос от Scale.FIT (хром браузера делает окно шире 16:9). В
+   фуллскрине (вьюпорт уже 16:9) и на не-16:9 мониторах класс не вешается —
+   остаётся честный FIT. Покрывает и Phaser-канвас, и lowres-фреймбуфер. */
+#game-container.aspect-fill > canvas {
+	display: block !important;
+	position: fixed !important; /* якорим к вьюпорту, а не к контейнеру */
+	inset: 0 !important;
+	left: 0 !important;
+	top: 0 !important;
+	width: 100vw !important;
+	height: 100vh !important;
+	margin: 0 !important;
+}
+/* ── Виньетка (как в Hollow Knight) ──
+   Экранный радиальный градиент: центр чист, к краям/углам плавно темнеет.
+   Привязана к экрану (не к миру) → при движении игрока объекты у краёв
+   затемняются. Псевдоэлемент рендерится поверх canvas и света, но под HUD
+   (#hud z-index 20). pointer-events:none — не мешает кликам. */
+#game-container::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 10;
+	pointer-events: none;
+	background: radial-gradient(
+		ellipse at center,
+		transparent 37%,
+		rgba(0, 0, 0, 0.3) 63%,
+		rgba(0, 0, 0, 0.65) 87%,
+		rgba(0, 0, 0, 0.85) 100%
+	);
+}
+/* ── Киношные полосы (letterbox) для катсцен ──
+   Чёрные полосы сверху/снизу выезжают при катсцене и уезжают обратно.
+   Высота ~11vh каждая (≈ кино-кадр 2.4:1), плавный выезд ~0.7с с ease-in-out. */
+.cinema-bar {
+	position: fixed;
+	left: 0;
+	width: 100%;
+	height: 11vh;
+	background: #000;
+	z-index: 100; /* поверх HUD (20), под модальными оверлеями (200) */
+	pointer-events: none;
+	will-change: transform;
+	transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.cinema-bar-top {
+	top: 0;
+	transform: translateY(-100%);
+}
+.cinema-bar-bottom {
+	bottom: 0;
+	transform: translateY(100%);
+}
+.cinema-bar.show {
+	transform: translateY(0);
+}
+
+/* ── Точечный свет (Tiled type="light") ──
+   Плавный непиксельный glow поверх пиксель-арта. Лежит в #game-container
+   (сосед canvas) → mix-blend-mode:screen смешивается с пикселями игры.
+   Позиция/размер задаются из GameScene._updateDomPositions каждый кадр. */
+.game-light {
+	position: absolute;
+	pointer-events: none;
+	border-radius: 50%;
+	mix-blend-mode: screen;
+	will-change: transform, opacity;
+}
+.game-light.pulse {
+	animation: lightPulse 2.6s ease-in-out infinite;
+}
+@keyframes lightPulse {
+	0%,
+	100% {
+		transform: scale(1);
+		opacity: 0.9;
+	}
+	50% {
+		transform: scale(1.05);
+		opacity: 1;
+	}
 }
 /* DO NOT set width/height on the canvas — Phaser Scale.FIT handles it.
    Any !important override here breaks HiDPI sharpness and 16:9 letterboxing. */
@@ -51,29 +156,6 @@ body {
 #hud.hidden {
 	display: none;
 }
-#hud-abilities {
-	position: absolute;
-	bottom: 16px;
-	left: 50%;
-	transform: translateX(-50%);
-	display: flex;
-	gap: 8px;
-}
-.hud-ability {
-	background: rgba(0, 0, 0, 0.6);
-	border: 1px solid var(--border);
-	color: var(--text-dim);
-	font-family: var(--font);
-	padding: 4px 10px;
-	border-radius: 4px;
-	font-size: 0.7rem;
-	letter-spacing: 0.06em;
-}
-.hud-ability.unlocked {
-	border-color: var(--gold);
-	color: var(--gold);
-}
-
 /* ── World-space HD text prompts (outside canvas → always crisp) ── */
 #hud-prompts {
 	position: absolute;
@@ -98,6 +180,25 @@ body {
 		1px 1px 0 #000,
 		0 2px 6px #000;
 }
+/* finaltext: пиксельный шрифт (отдельный класс → знаки/таблички не задеты). */
+.hud-world-final {
+	font-family: var(--font-pixel);
+	/* vw, а не rem → одинаковая доля экрана на любом разрешении (как .hk-text 2.25vw).
+	   Раньше 1.5rem (фикс. px) → на больших мониторах текст мельче по доле. */
+	font-size: 2.25vw;
+}
+/* Цветные слова: «Хост(а)» — синий рыцарь, «Гость/Гостя» — оранжевый рыцарь. */
+.fc-host {
+	color: #82a0d6;
+}
+.fc-guest {
+	color: #d1924c;
+}
+/* «Пройден!» — приятный салатовый с мягким свечением. */
+.fc-pass {
+	color: #b4e85e;
+	text-shadow: 0 0 10px rgba(180, 232, 94, 0.45);
+}
 .hud-world-exit {
 	color: #4ade80;
 	text-shadow:
@@ -110,15 +211,21 @@ body {
 /* Hollow Knight–style framed prompt — ornament PNGs top/bottom, text in centre */
 .hud-world-prompt,
 .hud-world-prompt-test {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 1px;
-	/* no background/border — the PNG ornaments provide the frame */
+	display: block; /* abspos → shrink-to-fit: ширину задаёт ТОЛЬКО текст */
+	/* orns абсолютны (вне потока) → не распирают рамку своей натуральной
+	   шириной (290px); тянутся под ширину текста. PNG-орнаменты = рамка. */
 }
 .hk-orn {
-	width: 200px;
-	height: auto;
+	position: absolute;
+	/* Размер в vw (а не px) → одинаковая доля экрана на любом разрешении, в тон
+	   тексту .hk-text (2.25vw). Раньше фикс. 62×32px → на больших мониторах обводки
+	   мельчали. Пропорция PNG 25:13 сохранена: width = height × 25/13.
+	   Центрируем по тексту: left:50% + margin-left = −width/2 (transform занят анимациями). */
+	left: 50%;
+	margin-left: -2.88vw; /* −width/2 */
+	width: 5.77vw; /* height × 25/13 */
+	height: 3vw;
+	image-rendering: pixelated; /* чёткие «кубики» пикселей, без сглаживания */
 	display: block;
 	pointer-events: none;
 	user-select: none;
@@ -129,22 +236,26 @@ body {
 	display: none;
 }
 .hk-orn-top {
+	bottom: 100%; /* сразу НАД текстом */
 	animation: hkOrnTop 0.38s ease-out forwards;
 }
 .hk-orn-bot {
+	top: 100%; /* сразу ПОД текстом */
 	animation: hkOrnBottom 0.38s ease-out forwards;
 }
 .hk-text {
-	font-family: var(--font);
-	font-size: 2.2rem;
-	letter-spacing: 0.07em;
+	display: block;
+	text-align: center;
+	font-family: var(--font-pixel); /* пиксельный шрифт для «Подобрать»/«Осмотреть» */
+	font-size: 2.25vw; /* в 1.5 раза больше (было 1.5vw) */
+	letter-spacing: 0.06em;
 	white-space: nowrap;
 	animation: hkTextIn 0.28s 0.07s ease-out both;
-	font-weight: bold;
+	font-weight: normal;
 }
 .hud-world-prompt .hk-text {
-	color: #eeeeee;
-	text-shadow: 0 0 8px rgba(238, 238, 238, 0.4);
+	color: #d7deea;
+	text-shadow: 0 0 8px rgba(215, 222, 234, 0.4);
 }
 .hud-world-prompt-test .hk-text {
 	color: #aaffaa;
@@ -206,6 +317,88 @@ body {
 	to {
 		opacity: 0;
 	}
+}
+
+/* ── Туториал-подсказки первого запуска (низ экрана, стиль Hollow Knight) ── */
+.tut-hint {
+	position: absolute;
+	left: 50%;
+	bottom: 8%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 1.4vw;
+	opacity: 0;
+	transition: opacity 0.9s ease;
+	pointer-events: none;
+}
+.tut-hint.visible {
+	opacity: 1;
+}
+/* WASD-кластер: W сверху по центру, A S D в ряд снизу */
+.tut-wasd {
+	display: grid;
+	grid-template-columns: repeat(3, auto);
+	gap: 0.35vw;
+}
+.tut-key-up {
+	grid-column: 2;
+	grid-row: 1;
+}
+/* Нижний ряд A S D — явные позиции (auto-flow после W уносил A в 1-й ряд) */
+.tut-wasd .tut-key:nth-child(2) {
+	grid-column: 1;
+	grid-row: 2;
+}
+.tut-wasd .tut-key:nth-child(3) {
+	grid-column: 2;
+	grid-row: 2;
+}
+.tut-wasd .tut-key:nth-child(4) {
+	grid-column: 3;
+	grid-row: 2;
+}
+.tut-key {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.7vw;
+	height: 2.7vw;
+	border: 0.14vw solid rgba(215, 222, 234, 0.75);
+	border-radius: 0.55vw;
+	background: rgba(8, 12, 18, 0.45);
+	box-shadow:
+		0 0 10px rgba(215, 222, 234, 0.18),
+		inset 0 0 8px rgba(215, 222, 234, 0.08);
+	font-family: var(--font-pixel);
+	font-size: 1.7vw;
+	color: #d7deea;
+	text-shadow: 0 0 8px rgba(215, 222, 234, 0.4);
+}
+/* Пробел — обычный квадрат со значком «⎵» (нижняя скоба, рисуем рамкой CSS) */
+.tut-space-glyph {
+	display: block;
+	width: 58%;
+	height: 26%;
+	border: 0.16vw solid #d7deea;
+	border-top: none;
+	border-radius: 0 0 0.3vw 0.3vw;
+	filter: drop-shadow(0 0 4px rgba(215, 222, 234, 0.4));
+}
+/* Иконка мыши — в таком же квадрате, как клавиши W A S D, по центру.
+   Мигает так же, как иконка ЛКМ в окне получения способности (lmbBlink). */
+.tut-key-mouse img {
+	height: 78%;
+	width: auto;
+	filter: drop-shadow(0 0 6px rgba(237, 237, 237, 0.45));
+	animation: lmbBlink 1.5s ease-in-out infinite;
+}
+.tut-label {
+	font-family: var(--font-pixel);
+	font-size: 2.25vw;
+	color: #d7deea;
+	text-shadow: 0 0 8px rgba(215, 222, 234, 0.4);
+	white-space: nowrap;
 }
 
 /* ── Full-screen game overlays (level complete, ability unlock) ── */
@@ -305,6 +498,137 @@ body {
 	animation: hkTextIn 0.5s 0.8s ease-out both;
 }
 
+/* ── «Второй шанс» — оффер воскрешения после смерти ── */
+.revive-title {
+	font-family: 'Cinzel Decorative', serif;
+	font-size: 1.6rem;
+	color: #ffd24a;
+	text-shadow: 0 0 22px rgba(255, 180, 40, 0.7);
+	letter-spacing: 0.12em;
+	text-align: center;
+}
+.revive-sub {
+	font-family: var(--font);
+	font-size: 0.85rem;
+	color: rgba(255, 255, 255, 0.6);
+	letter-spacing: 0.1em;
+}
+/* Полоска отсчёта (без цифр): за 5с уезжает от полной к нулю */
+.revive-bar-track {
+	width: 260px;
+	height: 8px;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.12);
+	overflow: hidden;
+	box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+.revive-bar-fill {
+	height: 100%;
+	width: 100%;
+	border-radius: 6px;
+	background: linear-gradient(90deg, #ffd24a, #ff7a3c);
+	box-shadow: 0 0 12px rgba(255, 180, 40, 0.7);
+	transform-origin: left center;
+	animation: reviveBar 5s linear forwards;
+}
+@keyframes reviveBar {
+	from { width: 100%; }
+	to { width: 0%; }
+}
+/* Кнопка «Смотреть рекламу» с иконкой видео-рекламы (SVG, не эмодзи) */
+.revive-ad-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 6px;
+	font-family: var(--font);
+	font-size: 0.95rem;
+	letter-spacing: 0.08em;
+	color: #0b0f16;
+	background: linear-gradient(90deg, #ffd24a, #ff9a3c);
+	border: none;
+	padding: 11px 26px;
+	border-radius: 6px;
+	cursor: pointer;
+	pointer-events: auto;
+	box-shadow: 0 0 18px rgba(255, 170, 50, 0.45);
+	transition: transform 0.12s, box-shadow 0.15s;
+}
+.revive-ad-btn:hover {
+	transform: translateY(-1px) scale(1.02);
+	box-shadow: 0 0 26px rgba(255, 170, 50, 0.7);
+}
+.revive-ad-icon {
+	width: 22px;
+	height: 22px;
+	color: #0b0f16;
+}
+
+/* ── Заглушка рекламы (окно поверх с крестиком) ── */
+.ad-overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.92);
+	pointer-events: auto;
+	z-index: 210;
+	animation: overlayIn 0.25s ease-out forwards;
+}
+.ad-box {
+	position: relative;
+	width: min(70vw, 640px);
+	height: min(60vh, 380px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: repeating-linear-gradient(
+		45deg,
+		#15171c,
+		#15171c 18px,
+		#191c22 18px,
+		#191c22 36px
+	);
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	border-radius: 10px;
+	box-shadow: 0 12px 60px rgba(0, 0, 0, 0.6);
+}
+.ad-placeholder {
+	font-family: var(--font);
+	font-size: 1.3rem;
+	color: rgba(255, 255, 255, 0.4);
+	letter-spacing: 0.1em;
+	text-align: center;
+	padding: 0 24px;
+}
+.ad-close {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: rgba(255, 255, 255, 0.7);
+	background: rgba(0, 0, 0, 0.45);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 50%;
+	cursor: pointer;
+	pointer-events: auto;
+	transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.ad-close:hover {
+	color: #fff;
+	border-color: rgba(255, 255, 255, 0.6);
+	background: rgba(255, 80, 80, 0.25);
+}
+.ad-close svg {
+	width: 18px;
+	height: 18px;
+}
+
 /* ── Ability-unlock overlay — staggered entrance ── */
 @keyframes aoFadeUp {
 	from {
@@ -385,6 +709,17 @@ body {
 	inset: 0;
 	pointer-events: none;
 	z-index: 0;
+	/* Плавное проявление при загрузке: частицы уже летят (отрицательные
+	   animation-delay), но слой целиком проявляется из нуля */
+	animation: particles-appear 5s ease-out both;
+}
+@keyframes particles-appear {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 .particle {
 	position: absolute;
@@ -407,6 +742,430 @@ body {
 	100% {
 		transform: translateY(-5vh);
 		opacity: 0;
+	}
+}
+
+/* ── Дымка по краям меню ──
+   Форма — не овал: несколько перекрывающихся radial-gradient «комков»
+   + сильный blur дают рваное облако. Дрейф туда-сюда через transform
+   (alternate), поэтому не дёргает layout. Во время геймплея отдельно
+   скрывать не нужно — #game-container (z-index 5) перекрывает. */
+#menu-fog {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 1; /* над частицами (0), под экранами меню (10) */
+	overflow: hidden;
+}
+.fog {
+	position: absolute;
+	filter: blur(34px); /* ← размытие краёв: больше = мягче дымок */
+	will-change: transform;
+}
+/* Дымок №1 — нижний левый угол */
+.fog-bl {
+	left: -16vw;
+	bottom: -20vh;
+	width: 70vw;
+	height: 62vh;
+	/* «комки» облака: эллипсы разного размера/прозрачности со смещением */
+	background:
+		radial-gradient(ellipse 40% 36% at 30% 70%, rgba(2, 4, 9, 0.98), transparent 70%),
+		radial-gradient(ellipse 32% 28% at 56% 84%, rgba(2, 4, 9, 0.9), transparent 70%),
+		radial-gradient(ellipse 28% 24% at 14% 46%, rgba(2, 4, 9, 0.8), transparent 70%),
+		radial-gradient(ellipse 24% 20% at 46% 52%, rgba(2, 4, 9, 0.6), transparent 70%),
+		radial-gradient(ellipse 18% 16% at 68% 64%, rgba(2, 4, 9, 0.55), transparent 70%);
+	animation: fog-drift 14s ease-in-out infinite alternate;
+}
+/* Дымок №2 — нижний правый угол (зеркальный дрейф, другой темп) */
+.fog-br {
+	right: -16vw;
+	bottom: -20vh;
+	width: 64vw;
+	height: 58vh;
+	background:
+		radial-gradient(ellipse 40% 36% at 70% 70%, rgba(2, 4, 9, 0.95), transparent 70%),
+		radial-gradient(ellipse 30% 26% at 44% 84%, rgba(2, 4, 9, 0.85), transparent 70%),
+		radial-gradient(ellipse 28% 24% at 86% 46%, rgba(2, 4, 9, 0.75), transparent 70%),
+		radial-gradient(ellipse 22% 18% at 54% 52%, rgba(2, 4, 9, 0.55), transparent 70%),
+		radial-gradient(ellipse 16% 14% at 32% 64%, rgba(2, 4, 9, 0.5), transparent 70%);
+	animation: fog-drift-rev 17s ease-in-out -6s infinite alternate;
+}
+/* Дымок №3 — верхний левый угол (поменьше, медленнее) */
+.fog-tl {
+	left: -14vw;
+	top: -18vh;
+	width: 56vw;
+	height: 50vh;
+	background:
+		radial-gradient(ellipse 40% 36% at 30% 30%, rgba(2, 4, 9, 0.92), transparent 70%),
+		radial-gradient(ellipse 30% 26% at 56% 16%, rgba(2, 4, 9, 0.8), transparent 70%),
+		radial-gradient(ellipse 26% 22% at 14% 54%, rgba(2, 4, 9, 0.7), transparent 70%),
+		radial-gradient(ellipse 22% 18% at 46% 48%, rgba(2, 4, 9, 0.5), transparent 70%),
+		radial-gradient(ellipse 16% 14% at 66% 36%, rgba(2, 4, 9, 0.45), transparent 70%);
+	animation: fog-drift 19s ease-in-out -10s infinite alternate;
+}
+/* Дымок №4 — верхний правый угол */
+.fog-tr {
+	right: -15vw;
+	top: -19vh;
+	width: 60vw;
+	height: 54vh;
+	background:
+		radial-gradient(ellipse 40% 36% at 70% 30%, rgba(2, 4, 9, 0.95), transparent 70%),
+		radial-gradient(ellipse 32% 28% at 44% 16%, rgba(2, 4, 9, 0.82), transparent 70%),
+		radial-gradient(ellipse 28% 24% at 86% 54%, rgba(2, 4, 9, 0.72), transparent 70%),
+		radial-gradient(ellipse 22% 18% at 54% 48%, rgba(2, 4, 9, 0.52), transparent 70%),
+		radial-gradient(ellipse 16% 14% at 34% 36%, rgba(2, 4, 9, 0.48), transparent 70%);
+	animation: fog-drift-rev 15s ease-in-out -3s infinite alternate;
+}
+@keyframes fog-drift {
+	0% {
+		transform: translate(0, 0) rotate(0deg) scale(1);
+	}
+	35% {
+		transform: translate(3vw, -2vh) rotate(5deg) scale(1.08);
+	}
+	70% {
+		transform: translate(6vw, 1vh) rotate(-4deg) scale(0.96);
+	}
+	100% {
+		transform: translate(8vw, -2.5vh) rotate(7deg) scale(1.05);
+	}
+}
+/* Дымовые «стены» — плотная черноватая дымка вдоль всего левого и
+   правого края (соединяет угловые дымки), почти закрывает стены фона.
+   Комки крупные у самого края, мельче и прозрачнее ближе к центру. */
+.fog-l {
+	left: -20vw;
+	top: -12vh;
+	width: 46vw;
+	height: 124vh;
+	background:
+		radial-gradient(ellipse 50% 30% at 22% 18%, rgba(2, 4, 9, 0.95), transparent 70%),
+		radial-gradient(ellipse 44% 26% at 14% 44%, rgba(2, 4, 9, 0.92), transparent 70%),
+		radial-gradient(ellipse 48% 28% at 24% 68%, rgba(2, 4, 9, 0.9), transparent 70%),
+		radial-gradient(ellipse 42% 24% at 12% 88%, rgba(2, 4, 9, 0.88), transparent 70%),
+		radial-gradient(ellipse 30% 18% at 46% 32%, rgba(2, 4, 9, 0.55), transparent 70%),
+		radial-gradient(ellipse 26% 16% at 42% 58%, rgba(2, 4, 9, 0.5), transparent 70%),
+		radial-gradient(ellipse 24% 14% at 48% 80%, rgba(2, 4, 9, 0.45), transparent 70%);
+	animation: fog-side 21s ease-in-out -8s infinite alternate;
+}
+.fog-r {
+	right: -20vw;
+	top: -12vh;
+	width: 46vw;
+	height: 124vh;
+	background:
+		radial-gradient(ellipse 50% 30% at 78% 22%, rgba(2, 4, 9, 0.95), transparent 70%),
+		radial-gradient(ellipse 44% 26% at 86% 48%, rgba(2, 4, 9, 0.92), transparent 70%),
+		radial-gradient(ellipse 48% 28% at 76% 72%, rgba(2, 4, 9, 0.9), transparent 70%),
+		radial-gradient(ellipse 42% 24% at 88% 90%, rgba(2, 4, 9, 0.88), transparent 70%),
+		radial-gradient(ellipse 30% 18% at 54% 36%, rgba(2, 4, 9, 0.55), transparent 70%),
+		radial-gradient(ellipse 26% 16% at 58% 62%, rgba(2, 4, 9, 0.5), transparent 70%),
+		radial-gradient(ellipse 24% 14% at 52% 84%, rgba(2, 4, 9, 0.45), transparent 70%);
+	animation: fog-side-rev 18s ease-in-out -4s infinite alternate;
+}
+/* Покачивание стен: лёгкий горизонтальный дрейф, край всегда прикрыт */
+@keyframes fog-side {
+	from {
+		transform: translateX(0) scale(1, 1);
+	}
+	50% {
+		transform: translateX(2.5vw) scale(1.05, 1.02);
+	}
+	to {
+		transform: translateX(-1.5vw) scale(0.97, 1.04);
+	}
+}
+@keyframes fog-side-rev {
+	from {
+		transform: translateX(0) scale(1, 1);
+	}
+	50% {
+		transform: translateX(-2.5vw) scale(1.05, 1.02);
+	}
+	to {
+		transform: translateX(1.5vw) scale(0.97, 1.04);
+	}
+}
+
+/* ── Мелкие тёмно-синие облачка ──
+   Полупрозрачные, в тон фона, всплывают снизу вверх и растворяются.
+   Форма «живая»: облако собрано из двух половинок (::before/::after),
+   каждая со своими комками и своей медленной анимацией болтанки —
+   половинки расходятся/сходятся, и силуэт постоянно меняется, как дым.
+   Уникальность формы каждого облака — разные пропорции элемента и
+   разные периоды/фазы болтанки через custom properties (--ma/--mb/--da/--db). */
+.fog-cloud {
+	position: absolute;
+	bottom: -24vh; /* старт за нижним краем, движение через translateY */
+	width: 36vw;
+	height: 19vh;
+	filter: blur(18px);
+	will-change: transform;
+	animation: fog-cloud-rise linear infinite;
+}
+.fog-cloud::before,
+.fog-cloud::after {
+	content: '';
+	position: absolute;
+	inset: -25%; /* с запасом, чтобы комки при болтанке не обрезались */
+	will-change: transform;
+}
+.fog-cloud::before {
+	animation: fog-morph-a var(--ma, 9s) var(--da, 0s) ease-in-out infinite alternate;
+}
+.fog-cloud::after {
+	animation: fog-morph-b var(--mb, 13s) var(--db, 0s) ease-in-out infinite alternate;
+}
+/* Болтанка половинок: разнонаправленные сдвиги/повороты/растяжения */
+@keyframes fog-morph-a {
+	from {
+		transform: translate(0, 0) rotate(0deg) scale(1, 1);
+	}
+	50% {
+		transform: translate(7%, -9%) rotate(9deg) scale(1.18, 0.86);
+	}
+	to {
+		transform: translate(-6%, 7%) rotate(-7deg) scale(0.88, 1.15);
+	}
+}
+@keyframes fog-morph-b {
+	from {
+		transform: translate(0, 0) rotate(0deg) scale(1, 1);
+	}
+	50% {
+		transform: translate(-8%, 6%) rotate(-8deg) scale(0.9, 1.16);
+	}
+	to {
+		transform: translate(6%, -8%) rotate(10deg) scale(1.15, 0.88);
+	}
+}
+/* У каждого облака своя раскладка комков в ::before/::after —
+   двух одинаковых силуэтов нет */
+.fog-cloud-1 {
+	left: 12vw;
+	animation-duration: 40s;
+	animation-delay: -18s;
+	--ma: 8s;
+	--mb: 12s;
+	--da: -3s;
+	--db: -7s;
+}
+.fog-cloud-1::before {
+	background:
+		radial-gradient(ellipse 36% 40% at 40% 55%, rgba(16, 26, 46, 0.75), transparent 70%),
+		radial-gradient(ellipse 22% 30% at 62% 38%, rgba(16, 26, 46, 0.55), transparent 70%),
+		radial-gradient(ellipse 16% 22% at 22% 44%, rgba(16, 26, 46, 0.45), transparent 70%),
+		radial-gradient(ellipse 12% 16% at 50% 76%, rgba(16, 26, 46, 0.4), transparent 70%);
+}
+.fog-cloud-1::after {
+	background:
+		radial-gradient(ellipse 28% 32% at 52% 62%, rgba(16, 26, 46, 0.6), transparent 70%),
+		radial-gradient(ellipse 20% 24% at 34% 70%, rgba(16, 26, 46, 0.5), transparent 70%),
+		radial-gradient(ellipse 14% 18% at 68% 48%, rgba(16, 26, 46, 0.4), transparent 70%);
+}
+.fog-cloud-2 {
+	left: 46vw;
+	width: 24vw;
+	height: 12vh;
+	animation-duration: 52s;
+	animation-delay: -45s;
+	--ma: 11s;
+	--mb: 9s;
+	--da: -6s;
+	--db: -2s;
+}
+.fog-cloud-2::before {
+	background:
+		radial-gradient(ellipse 40% 30% at 35% 60%, rgba(16, 26, 46, 0.7), transparent 70%),
+		radial-gradient(ellipse 26% 24% at 60% 50%, rgba(16, 26, 46, 0.55), transparent 70%),
+		radial-gradient(ellipse 18% 20% at 18% 48%, rgba(16, 26, 46, 0.4), transparent 70%);
+}
+.fog-cloud-2::after {
+	background:
+		radial-gradient(ellipse 30% 28% at 58% 66%, rgba(16, 26, 46, 0.6), transparent 70%),
+		radial-gradient(ellipse 18% 22% at 42% 76%, rgba(16, 26, 46, 0.45), transparent 70%),
+		radial-gradient(ellipse 14% 16% at 72% 56%, rgba(16, 26, 46, 0.38), transparent 70%);
+}
+.fog-cloud-3 {
+	left: 72vw;
+	width: 46vw;
+	height: 24vh;
+	animation-duration: 46s;
+	animation-delay: -7s;
+	--ma: 10s;
+	--mb: 14s;
+	--da: -1s;
+	--db: -9s;
+}
+.fog-cloud-3::before {
+	background:
+		radial-gradient(ellipse 30% 42% at 44% 50%, rgba(16, 26, 46, 0.75), transparent 70%),
+		radial-gradient(ellipse 22% 30% at 28% 64%, rgba(16, 26, 46, 0.55), transparent 70%),
+		radial-gradient(ellipse 16% 24% at 60% 36%, rgba(16, 26, 46, 0.45), transparent 70%),
+		radial-gradient(ellipse 10% 14% at 70% 60%, rgba(16, 26, 46, 0.35), transparent 70%);
+}
+.fog-cloud-3::after {
+	background:
+		radial-gradient(ellipse 26% 34% at 56% 58%, rgba(16, 26, 46, 0.62), transparent 70%),
+		radial-gradient(ellipse 20% 26% at 38% 42%, rgba(16, 26, 46, 0.5), transparent 70%),
+		radial-gradient(ellipse 12% 18% at 66% 70%, rgba(16, 26, 46, 0.4), transparent 70%);
+}
+/* Второй слой облачков: чуть светлее первого (тёмно-синий в тон фона),
+   заметно быстрее */
+.fog-cloud-light {
+	filter: blur(14px);
+}
+.fog-cloud-l1 {
+	left: 4vw;
+	width: 28vw;
+	height: 14vh;
+	animation-duration: 24s;
+	animation-delay: -10s;
+	--ma: 6s;
+	--mb: 9s;
+	--da: -2s;
+	--db: -5s;
+}
+.fog-cloud-l1::before {
+	background:
+		radial-gradient(ellipse 34% 40% at 42% 52%, rgba(14, 24, 56, 0.4), transparent 70%),
+		radial-gradient(ellipse 22% 28% at 60% 40%, rgba(14, 24, 56, 0.3), transparent 70%),
+		radial-gradient(ellipse 14% 20% at 26% 42%, rgba(14, 24, 56, 0.22), transparent 70%);
+}
+.fog-cloud-l1::after {
+	background:
+		radial-gradient(ellipse 28% 32% at 54% 62%, rgba(14, 24, 56, 0.33), transparent 70%),
+		radial-gradient(ellipse 18% 24% at 38% 72%, rgba(14, 24, 56, 0.25), transparent 70%),
+		radial-gradient(ellipse 12% 16% at 68% 46%, rgba(14, 24, 56, 0.2), transparent 70%);
+}
+.fog-cloud-l2 {
+	left: 26vw;
+	width: 17vw;
+	height: 9vh;
+	animation-duration: 30s;
+	animation-delay: -22s;
+	--ma: 8s;
+	--mb: 6s;
+	--da: -4s;
+	--db: -1s;
+}
+.fog-cloud-l2::before {
+	background:
+		radial-gradient(ellipse 38% 34% at 36% 58%, rgba(14, 24, 56, 0.38), transparent 70%),
+		radial-gradient(ellipse 24% 26% at 58% 46%, rgba(14, 24, 56, 0.3), transparent 70%),
+		radial-gradient(ellipse 16% 18% at 20% 44%, rgba(14, 24, 56, 0.22), transparent 70%);
+}
+.fog-cloud-l2::after {
+	background:
+		radial-gradient(ellipse 26% 30% at 60% 64%, rgba(14, 24, 56, 0.32), transparent 70%),
+		radial-gradient(ellipse 18% 22% at 44% 74%, rgba(14, 24, 56, 0.24), transparent 70%),
+		radial-gradient(ellipse 12% 14% at 70% 52%, rgba(14, 24, 56, 0.18), transparent 70%);
+}
+.fog-cloud-l3 {
+	left: 52vw;
+	width: 38vw;
+	height: 19vh;
+	animation-duration: 26s;
+	animation-delay: -4s;
+	--ma: 7s;
+	--mb: 10s;
+	--da: -6s;
+	--db: -3s;
+}
+.fog-cloud-l3::before {
+	background:
+		radial-gradient(ellipse 30% 44% at 46% 48%, rgba(14, 24, 56, 0.42), transparent 70%),
+		radial-gradient(ellipse 20% 30% at 30% 62%, rgba(14, 24, 56, 0.3), transparent 70%),
+		radial-gradient(ellipse 14% 22% at 62% 38%, rgba(14, 24, 56, 0.24), transparent 70%);
+}
+.fog-cloud-l3::after {
+	background:
+		radial-gradient(ellipse 26% 34% at 54% 60%, rgba(14, 24, 56, 0.34), transparent 70%),
+		radial-gradient(ellipse 18% 26% at 36% 44%, rgba(14, 24, 56, 0.26), transparent 70%),
+		radial-gradient(ellipse 12% 18% at 68% 68%, rgba(14, 24, 56, 0.2), transparent 70%);
+}
+.fog-cloud-l4 {
+	left: 68vw;
+	width: 22vw;
+	height: 11vh;
+	animation-duration: 34s;
+	animation-delay: -28s;
+	--ma: 9s;
+	--mb: 7s;
+	--da: -1s;
+	--db: -6s;
+}
+.fog-cloud-l4::before {
+	background:
+		radial-gradient(ellipse 36% 36% at 40% 60%, rgba(14, 24, 56, 0.4), transparent 70%),
+		radial-gradient(ellipse 22% 26% at 62% 44%, rgba(14, 24, 56, 0.28), transparent 70%),
+		radial-gradient(ellipse 14% 18% at 24% 40%, rgba(14, 24, 56, 0.22), transparent 70%);
+}
+.fog-cloud-l4::after {
+	background:
+		radial-gradient(ellipse 28% 30% at 56% 58%, rgba(14, 24, 56, 0.32), transparent 70%),
+		radial-gradient(ellipse 16% 22% at 40% 70%, rgba(14, 24, 56, 0.26), transparent 70%),
+		radial-gradient(ellipse 10% 14% at 70% 50%, rgba(14, 24, 56, 0.18), transparent 70%);
+}
+.fog-cloud-l5 {
+	left: 82vw;
+	width: 31vw;
+	height: 16vh;
+	animation-duration: 28s;
+	animation-delay: -16s;
+	--ma: 6.5s;
+	--mb: 8.5s;
+	--da: -3s;
+	--db: -8s;
+}
+.fog-cloud-l5::before {
+	background:
+		radial-gradient(ellipse 32% 38% at 44% 54%, rgba(14, 24, 56, 0.42), transparent 70%),
+		radial-gradient(ellipse 24% 28% at 26% 46%, rgba(14, 24, 56, 0.3), transparent 70%),
+		radial-gradient(ellipse 16% 20% at 64% 42%, rgba(14, 24, 56, 0.22), transparent 70%);
+}
+.fog-cloud-l5::after {
+	background:
+		radial-gradient(ellipse 30% 32% at 52% 64%, rgba(14, 24, 56, 0.34), transparent 70%),
+		radial-gradient(ellipse 18% 24% at 66% 56%, rgba(14, 24, 56, 0.24), transparent 70%),
+		radial-gradient(ellipse 12% 16% at 36% 72%, rgba(14, 24, 56, 0.2), transparent 70%);
+}
+/* Подъём с растворением: проявляется внизу, тает к ~85% пути,
+   не доходя до верхнего края экрана */
+@keyframes fog-cloud-rise {
+	0% {
+		transform: translate(0, 0) scale(1);
+		opacity: 0;
+	}
+	12% {
+		opacity: 1;
+	}
+	60% {
+		opacity: 1;
+		transform: translate(4vw, -65vh) scale(1.08);
+	}
+	100% {
+		transform: translate(-2vw, -110vh) scale(1.15);
+		opacity: 0;
+	}
+}
+
+/* Зеркальный дрейф для правых углов: плывёт влево */
+@keyframes fog-drift-rev {
+	0% {
+		transform: translate(0, 0) rotate(0deg) scale(1);
+	}
+	35% {
+		transform: translate(-3vw, -2vh) rotate(-5deg) scale(1.08);
+	}
+	70% {
+		transform: translate(-6vw, 1vh) rotate(4deg) scale(0.96);
+	}
+	100% {
+		transform: translate(-8vw, -2.5vh) rotate(-7deg) scale(1.05);
 	}
 }
 
@@ -443,11 +1202,15 @@ body {
 
 .menu-title-wrap {
 	text-align: center;
+	/* Сдвиг вверх только визуальный (transform) → раскладка не меняется,
+	   кнопки остаются на месте */
+	transform: translateY(-56px);
 }
 
 .menu-title {
 	font-family: 'Cinzel Decorative', serif;
-	font-size: clamp(2.8rem, 7vw, 5.5rem);
+	/* ×1.2 от исходного clamp(2.8rem, 7vw, 5.5rem) */
+	font-size: clamp(3.35rem, 8.4vw, 6.6rem);
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	color: #fff;
@@ -458,13 +1221,25 @@ body {
 	line-height: 1.1;
 }
 
-.menu-ornament,
-.settings-ornament {
-	color: var(--gold);
-	font-size: 1.1rem;
-	letter-spacing: 0.2em;
-	margin-top: 16px;
-	opacity: 0.75;
+.menu-ornament-brush {
+	/* Чуть уже заголовка: wrap (flex item) сжимается до ширины текста → 88% от него */
+	width: 88%; /* ширина следует за заголовком → выросла вместе с ним */
+	height: clamp(22px, 3.85vw, 41px); /* ×1.2 */
+	margin: 17px auto 0;
+	background-color: var(--text);
+	/* 100% 100% — растягиваем мазок на всю ширину, не сохраняя пропорции PNG */
+	-webkit-mask: url('/assets/stuff/brush2.png') center / 100% 100% no-repeat;
+	mask: url('/assets/stuff/brush2.png') center / 100% 100% no-repeat;
+	filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.4));
+	opacity: 0.9;
+}
+
+/* Уменьшенный мазок под заголовками «Пауза»/«Настройки» (их контейнеры —
+   flex на всю ширину, 88% было бы шире текста) */
+.menu-ornament-brush.brush-sm {
+	width: min(220px, 50vw);
+	height: clamp(12px, 1.6vw, 20px);
+	margin: 0 auto;
 }
 
 .menu-nav {
@@ -477,7 +1252,8 @@ body {
 .menu-item {
 	background: none;
 	border: none;
-	color: var(--text-dim);
+	color: var(--text);
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
 	font-family: var(--font);
 	font-size: clamp(1rem, 2vw, 1.35rem);
 	letter-spacing: 0.12em;
@@ -487,6 +1263,16 @@ body {
 		color 0.2s,
 		text-shadow 0.2s;
 	position: relative;
+}
+/* Кнопки главного меню — ×1.4 (остальные экраны не трогаем) */
+#main-nav .menu-item {
+	font-size: clamp(1.4rem, 2.8vw, 1.9rem);
+	padding: 14px 84px;
+}
+#main-nav {
+	gap: 0;
+	/* Визуальный сдвиг вниз — раскладка и заголовок не двигаются */
+	transform: translateY(24px);
 }
 .menu-item::before,
 .menu-item::after {
@@ -513,7 +1299,9 @@ body {
 .menu-item:hover,
 .menu-item.active {
 	color: var(--text);
-	text-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+	text-shadow:
+		0 0 20px rgba(255, 255, 255, 0.6),
+		0 0 60px rgba(255, 255, 255, 0.25);
 }
 .menu-item:hover::before,
 .menu-item:hover::after,
@@ -548,13 +1336,16 @@ body {
 }
 .settings-title {
 	font-family: 'Cinzel Decorative', serif;
-	font-size: 2.2rem;
-	text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+	font-size: 3rem;
+	color: #fff;
+	text-shadow:
+		0 0 20px rgba(255, 255, 255, 0.5),
+		0 0 60px rgba(255, 255, 255, 0.2);
 }
+/* Hollow Knight: без панели — прозрачно, фон просвечивает */
 .settings-panel {
-	background: var(--panel);
-	border: 1px solid var(--border);
-	border-radius: 12px;
+	background: none;
+	border: none;
 	padding: 32px 40px;
 	min-width: 480px;
 	max-width: 600px;
@@ -564,68 +1355,77 @@ body {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 12px 0;
-	border-bottom: 1px solid var(--border);
-	font-size: 0.95rem;
+	padding: 22px 0;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+	font-size: 1.4rem;
 	letter-spacing: 0.05em;
 }
 .settings-row:last-child {
 	border-bottom: none;
 }
 .settings-row label {
-	color: var(--text-dim);
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+	/* Forum, а не Cinzel: Cinzel — капитель, латиница «Language»
+	   рисовалась бы как «LANGUAGE» (кириллица и так падает в Forum) */
+	font-family: 'Forum', serif;
 }
 
 .lang-btn {
-	background: var(--panel);
-	border: 1px solid var(--border);
-	color: var(--text);
+	background: none;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 6px 18px;
+	padding: 7px 20px;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.9rem;
+	font-size: 1.05rem;
 	transition: border-color 0.2s;
 }
 .lang-btn.active {
 	border-color: var(--gold);
 	color: var(--gold);
+	text-shadow: 0 0 10px rgba(200, 169, 110, 0.5);
 }
 
 input[type='range'] {
 	-webkit-appearance: none;
-	width: 160px;
+	width: 200px;
 	height: 4px;
-	background: var(--border);
+	background: rgba(255, 255, 255, 0.3);
 	border-radius: 2px;
 	outline: none;
 }
 input[type='range']::-webkit-slider-thumb {
 	-webkit-appearance: none;
-	width: 14px;
-	height: 14px;
+	width: 17px;
+	height: 17px;
 	border-radius: 50%;
 	background: var(--gold);
+	box-shadow: 0 0 10px rgba(200, 169, 110, 0.6);
 	cursor: pointer;
 }
 .range-val {
-	width: 24px;
+	width: 32px;
 	text-align: right;
 	color: var(--gold);
-	font-size: 0.9rem;
+	text-shadow: 0 0 10px rgba(200, 169, 110, 0.5);
+	font-size: 1.1rem;
 }
 
 .default-btn {
 	display: block;
 	margin: 20px auto 0;
 	background: none;
-	border: 1px solid var(--border);
-	color: var(--text-dim);
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 8px 24px;
+	padding: 9px 28px;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.85rem;
+	font-size: 1.05rem;
 	letter-spacing: 0.08em;
 	transition:
 		border-color 0.2s,
@@ -634,30 +1434,34 @@ input[type='range']::-webkit-slider-thumb {
 .default-btn:hover {
 	border-color: var(--gold);
 	color: var(--gold);
+	text-shadow: 0 0 10px rgba(200, 169, 110, 0.5);
 }
 
 .keybind-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 10px 0;
-	border-bottom: 1px solid var(--border);
-	font-size: 0.9rem;
+	padding: 15px 0;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+	font-size: 1.3rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 .keybind-row:last-of-type {
 	border-bottom: none;
 }
 .keybind-key {
-	background: var(--panel);
-	border: 1px solid var(--border);
-	color: var(--text);
+	background: none;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
 	font-family: monospace;
-	padding: 4px 12px;
+	padding: 5px 14px;
 	border-radius: 4px;
 	cursor: pointer;
-	min-width: 100px;
+	min-width: 110px;
 	text-align: center;
-	font-size: 0.85rem;
+	font-size: 1rem;
 	transition: border-color 0.2s;
 }
 .keybind-key:hover {
@@ -679,77 +1483,113 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 select.settings-select {
-	background: var(--panel);
-	border: 1px solid var(--border);
-	color: var(--text);
+	background: none;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 5px 10px;
+	padding: 6px 12px;
 	border-radius: 6px;
-	font-size: 0.85rem;
+	font-size: 1rem;
 	cursor: pointer;
+}
+/* Выпадающий список рисуется системно — тёмный фон только у опций,
+   чтобы текст не сливался с белым системным фоном */
+select.settings-select option {
+	background: #0d1525;
+	color: #fff;
 }
 
 .toggle-btn {
-	background: var(--panel);
-	border: 1px solid var(--border);
-	color: var(--text-dim);
+	background: none;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 5px 16px;
+	padding: 6px 18px;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.85rem;
+	font-size: 1.05rem;
 	transition: all 0.2s;
 }
 .toggle-btn.on {
 	border-color: var(--gold);
 	color: var(--gold);
+	text-shadow: 0 0 10px rgba(200, 169, 110, 0.5);
 }
 
 /* ── Lobby ── */
+#screen-lobby {
+	flex-direction: column;
+	gap: 1.6vh;
+}
 .lobby-wrap {
 	display: flex;
-	/* 16:9 box that fits any screen (landscape OR portrait) with padding */
-	width: min(1100px, 94vw, calc(88vh * 16 / 9));
+	/* 16:9 box ~почти на весь экран с небольшими отступами на ЛЮБОМ мониторе.
+	   Без фикс-капа в px → на больших мониторах окно крупное (раньше 1100px давал
+	   гигантские поля). Размер ограничен шириной (95vw) ИЛИ высотой (92vh·16/9). */
+	width: min(88vw, calc(82vh * 16 / 9));
 	aspect-ratio: 16 / 9;
-	background: var(--bg2);
-	border: 1px solid var(--border);
-	border-radius: 16px;
+	/* Базовый размер шрифта = доля ВЫСОТЫ САМОГО БОКСА (а не экрана), иначе на
+	   узких/портретных экранах окно ограничено шириной, а vh-шрифт берёт огромную
+	   высоту экрана → текст не лезет в бокс. Высота бокса = min(88vw·9/16, 82vh),
+	   поэтому шрифт = min(1.13vw, 1.87vh). */
+	font-size: min(1.13vw, 1.87vh);
+	/* Hollow Knight: без панели — прозрачно, фон игры просвечивает */
+	background: none;
+	border: none;
 	overflow: hidden;
 }
 .lobby-left {
-	flex: 0 0 42%;
+	flex: 0 0 30%;
 	display: flex;
 	flex-direction: column;
-	padding: 28px 24px;
-	border-right: 1px solid var(--border);
+	padding: 1.75em 1.5em;
 }
 .lobby-divider {
-	width: 1px;
-	background: var(--border);
+	width: 11px;
+	/* Короче панелей и по центру (по умолчанию flex растягивал на всю высоту) */
+	height: 90%;
+	align-self: center;
+	/* Два слоя: тонкая линия (3px по центру, длинное затухание к концам)
+	   + мягкое эллиптическое свечение, тающее во все стороны.
+	   box-shadow не годится: его прямоугольный ореол жёстко обрезался
+	   на торцах элемента. */
+	background:
+		linear-gradient(
+				to bottom,
+				transparent,
+				rgba(255, 255, 255, 0.75) 25%,
+				rgba(255, 255, 255, 0.75) 75%,
+				transparent
+			)
+			center / 3px 100% no-repeat,
+		radial-gradient(ellipse 50% 40% at center, rgba(255, 255, 255, 0.3), transparent 70%);
 }
 .lobby-right {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	padding: 28px 32px;
+	padding: 1.75em 2em;
 }
 .lobby-panel-title {
-	font-size: 1.1rem;
+	font-size: 1.1em;
 	letter-spacing: 0.15em;
-	color: var(--text-dim);
-	margin-bottom: 16px;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+	margin-bottom: 1em;
 	text-transform: uppercase;
 }
 .lobby-search {
-	background: rgba(255, 255, 255, 0.05);
-	border: 1px solid var(--border);
-	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.22);
+	border-radius: 0.5em;
 	color: var(--text);
 	font-family: var(--font);
-	padding: 10px 14px;
-	font-size: 0.85rem;
+	padding: 0.6em 0.9em;
+	font-size: 0.85em;
 	width: 100%;
-	margin-bottom: 12px;
+	margin-bottom: 0.75em;
 	outline: none;
 	transition: border-color 0.2s;
 }
@@ -765,7 +1605,7 @@ select.settings-select {
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 0.25em;
 }
 .server-list::-webkit-scrollbar {
 	width: 4px;
@@ -778,10 +1618,10 @@ select.settings-select {
 .server-item {
 	display: flex;
 	align-items: center;
-	padding: 12px 14px;
-	background: var(--panel);
-	border: 2px solid var(--border);
-	border-radius: 8px;
+	padding: 0.75em 0.9em;
+	background: none;
+	border: 3px solid var(--border); /* жирнее, статус-цвета перекрывают */
+	border-radius: 0.5em;
 	transition:
 		border-color 0.35s,
 		background 0.2s,
@@ -817,20 +1657,22 @@ select.settings-select {
 .server-item-info {
 	display: flex;
 	flex-direction: column;
-	gap: 3px;
+	gap: 0.2em;
 }
 .server-item-name {
-	font-size: 0.95rem;
-	color: var(--text);
+	font-size: 0.95em;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 .server-item-meta {
-	font-size: 0.75rem;
-	color: var(--text-dim);
+	font-size: 0.75em;
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
 }
 
 /* Status label below the meta line */
 .server-item-status {
-	font-size: 0.72rem;
+	font-size: 0.72em;
 	letter-spacing: 0.08em;
 	font-weight: 600;
 	margin-top: 1px;
@@ -858,56 +1700,110 @@ select.settings-select {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--text-dim);
-	font-size: 0.85rem;
-	opacity: 0.6;
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+	font-size: 1.15em;
+	opacity: 0.8;
 }
 
 .save-slots {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	/* Маленькие промежутки между блоками; сами блоки растягиваются (flex:1 ниже),
+	   занимая равную долю высоты панели → широкие блоки, узкие отступы. */
+	gap: 0.6em;
 	flex: 1;
 }
 .save-slot {
+	flex: 1; /* каждый профиль занимает равную долю высоты панели */
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 18px 20px;
-	border-bottom: 1px solid var(--border);
+	padding: 1.1em 1.25em 1.1em 1.6em;
 	cursor: pointer;
-	transition: background 0.2s;
-	border-radius: 8px;
+	position: relative; /* для орнаментной линии (::before/::after) */
 }
-.save-slot:hover {
-	background: var(--panel);
+/* Орнамент Hollow Knight: линия ПОД слотом, тает вправо */
+.save-slot::before {
+	content: '';
+	position: absolute;
+	bottom: 0;
+	/* Стык на ПРЯМОМ участке уголка (дуга кончается на 1.1em, уголок 1.5em):
+	   линии перекрываются на одной высоте → шва не видно */
+	left: 1.2em;
+	right: 0;
+	height: 2px;
+	/* Непрозрачный цвет (а не rgba): на перекрытии с уголком альфы
+	   не складываются → стык не светлеет */
+	background: linear-gradient(to right, #d9dde4 55%, rgba(217, 221, 228, 0));
+	transition: background 0.25s;
+}
+/* Завиток на левом конце линии: уголок, загибающийся вверх */
+.save-slot::after {
+	content: '';
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 1.5em;
+	height: 1.6em;
+	border-left: 2px solid #d9dde4;
+	border-bottom: 2px solid #d9dde4;
+	/* Радиус меньше ширины → после дуги остаётся прямой кусок для стыка */
+	border-bottom-left-radius: 1.1em 1.3em;
+	transition: border-color 0.25s;
+}
+/* Hover: текст и орнамент вспыхивают белым (вместо подложки) */
+.save-slot:hover .save-slot-name {
+	color: #fff;
+	text-shadow: 0 0 14px rgba(255, 255, 255, 0.6);
+}
+.save-slot:hover::before {
+	background: linear-gradient(to right, #fff 55%, rgba(255, 255, 255, 0));
+}
+.save-slot:hover::after {
+	border-color: #fff;
+}
+.save-slot-left {
+	display: flex;
+	align-items: center;
+	gap: 0.7em;
+}
+.save-slot-num {
+	font-size: 1.7em;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+	min-width: 1.4em;
 }
 .save-slot-info {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 0.4em;
 }
 .save-slot-name {
-	font-size: 1rem;
-	color: var(--text);
+	font-size: 1.7em;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 .save-slot-meta {
-	font-size: 0.8rem;
-	color: var(--text-dim);
+	font-size: 1.2em;
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
 }
 .save-slot.empty .save-slot-name {
-	color: var(--text-dim);
-	font-size: 0.95rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+	font-size: 1.7em;
 }
 .clear-save-btn {
 	background: none;
-	border: 1px solid rgba(255, 80, 80, 0.3);
-	color: rgba(255, 100, 100, 0.7);
+	border: 2px solid rgba(255, 80, 80, 0.45);
+	color: #ff6060;
+	text-shadow: 0 0 10px rgba(255, 80, 80, 0.6);
 	font-family: var(--font);
-	padding: 5px 12px;
-	border-radius: 6px;
+	padding: 0.55em 1.2em;
+	border-radius: 0.5em;
 	cursor: pointer;
-	font-size: 0.75rem;
+	font-size: 1em;
 	letter-spacing: 0.06em;
 	transition: all 0.2s;
 }
@@ -938,38 +1834,74 @@ select.settings-select {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 32px;
+	gap: 14px;
 	width: min(900px, 90vw);
+	/* На всю высоту: имя+подсказка прижаты к верху, .level-center
+	   центрирует сетку и кнопку в оставшемся пространстве */
+	height: 100%;
+	padding-top: 5vh;
+}
+.level-center {
+	/* Ровно центр экрана — именно сетка уровней: кнопка «Начать» вынесена
+	   из потока (absolute ниже), поэтому на центровку не влияет */
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: min(900px, 90vw);
+}
+.level-center .start-btn {
+	position: absolute;
+	top: calc(100% + 28px);
+	left: 50%;
+	transform: translateX(-50%);
 }
 .server-name-wrap {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	font-size: 1.3rem;
+	font-size: 2.7rem;
 }
 .server-name-text {
-	color: var(--text);
+	color: #fff;
+	text-shadow: 0 0 14px rgba(255, 255, 255, 0.4);
 	letter-spacing: 0.1em;
 }
-.rename-btn {
-	background: none;
-	border: none;
+/* Хост может переименовать: в покое имя чистое, при наведении из центра
+   выезжает тонкая золотая линия + усиливается свечение */
+.server-name-text.renamable {
 	cursor: pointer;
-	font-size: 1rem;
-	opacity: 0.5;
-	transition: opacity 0.2s;
+	position: relative;
+	padding-bottom: 4px;
+	transition: text-shadow 0.25s;
 }
-.rename-btn:hover {
-	opacity: 1;
+.server-name-text.renamable::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	bottom: 0;
+	width: 100%;
+	height: 2px;
+	background: var(--gold);
+	box-shadow: 0 0 10px rgba(200, 169, 110, 0.6);
+	transform: translateX(-50%) scaleX(0);
+	transition: transform 0.3s ease;
+}
+.server-name-text.renamable:hover {
+	text-shadow: 0 0 18px rgba(255, 255, 255, 0.65);
+}
+.server-name-text.renamable:hover::after {
+	transform: translateX(-50%) scaleX(1);
 }
 .rename-input {
 	background: var(--panel);
-	border: 1px solid var(--gold);
-	color: var(--text);
+	border: 2px solid var(--gold);
+	color: #fff;
+	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
 	padding: 4px 12px;
 	border-radius: 6px;
-	font-size: 1rem;
+	font-size: 1.4rem;
 	outline: none;
 	letter-spacing: 0.08em;
 }
@@ -978,45 +1910,106 @@ select.settings-select {
 }
 
 .level-select-hint {
-	font-size: 0.85rem;
-	color: var(--text-dim);
+	font-size: 1.6rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 	letter-spacing: 0.08em;
 	text-align: center;
 	margin: 0;
-	opacity: 0.8;
+	opacity: 0.9;
 }
 
+/* Аватары — пиксельные рыцари в верхних углах экрана.
+   Спрайтшит 8×8 кадров по 64px → background-size 800%, idle-анимация
+   первых 4 кадров первой строки через steps(). */
 .players-row {
-	display: flex;
-	gap: 80px;
-	align-items: center;
+	pointer-events: none;
 }
 .player-slot {
+	position: fixed;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 8px;
-	font-size: 0.85rem;
-	color: var(--text-dim);
+	font-size: 1.5rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 	letter-spacing: 0.1em;
 }
+/* Отрицательный сдвиг компенсирует пустые поля в кадре спрайта —
+   сам рыцарь оказывается почти у края */
+.player-slot.host {
+	top: -2vw;
+	left: -1vw;
+}
+.player-slot.guest {
+	top: -2vw;
+	right: -1vw;
+}
 .player-avatar {
-	width: 56px;
-	height: 56px;
-	border-radius: 50%;
-	border: 2px solid;
+	width: 21vw; /* ×1.5 от прежних 14vw */
+	height: 21vw;
+	image-rendering: pixelated;
+	background-repeat: no-repeat;
+	background-size: 800% 800%;
+	background-position: 0 0;
+	animation: avatar-idle 0.9s steps(4) infinite;
+}
+/* Шаги по строке idle: 4 кадра, шаг сетки = 100/7 % (8 колонок) */
+@keyframes avatar-idle {
+	from {
+		background-position-x: 0%;
+	}
+	to {
+		background-position-x: 57.1429%;
+	}
+}
+/* Случайные анимации (вешаются JS-ом из LevelSelectScreen):
+   удар — 5-я строка шита (взмах с дугой, 6 кадров),
+   блок — 3-я строка (3 кадра). По окончании класс снимается → idle. */
+.player-avatar.anim-attack {
+	background-position-y: 57.1429%; /* строка 5 (индекс 4) */
+	animation: avatar-act6 0.72s steps(6) infinite;
+}
+.player-avatar.anim-block {
+	background-position-y: 28.5714%; /* строка 3 (индекс 2) */
+	animation: avatar-act3 0.54s steps(3) infinite;
+}
+@keyframes avatar-act6 {
+	from {
+		background-position-x: 0%;
+	}
+	to {
+		background-position-x: 85.7143%;
+	}
+}
+@keyframes avatar-act3 {
+	from {
+		background-position-x: 0%;
+	}
+	to {
+		background-position-x: 42.8571%;
+	}
 }
 .player-avatar.blue {
-	background: var(--blue);
-	border-color: var(--blue);
+	background-image: url('/assets/playerblue/blueknight.png');
 }
 .player-avatar.orange {
-	background: var(--orange);
-	border-color: var(--orange);
+	background-image: url('/assets/playerorange/orangeknight.png');
 }
+/* Гость справа смотрит влево — навстречу хосту */
+.player-slot.guest .player-avatar {
+	transform: scaleX(-1);
+}
+/* Подпись сразу под ногами рыцаря: в кадре спрайта снизу пустота,
+   поэтому подтягиваем текст вверх */
+.player-slot span {
+	margin-top: -3.9vw; /* −2.6vw × 1.5 — пустота в кадре выросла вместе со спрайтом */
+}
+/* Ожидание гостя: застывший тёмный силуэт */
 .player-avatar.dim {
-	background: rgba(255, 136, 68, 0.2);
-	border-color: rgba(255, 136, 68, 0.3);
+	filter: grayscale(0.85) brightness(0.45);
+	opacity: 0.8;
+	animation: none;
 }
 
 .levels-grid {
@@ -1034,17 +2027,21 @@ select.settings-select {
 	justify-content: center;
 	gap: 6px;
 	cursor: pointer;
-	border: 1px solid var(--border);
-	background: var(--panel);
+	border: 3px solid var(--border);
+	background: none;
 	transition: all 0.2s;
-	font-size: 0.8rem;
+	font-size: 1rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 .level-card.unlocked {
-	border-color: rgba(255, 255, 255, 0.25);
+	border-color: rgba(255, 255, 255, 0.45);
+	box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
 }
 .level-card.unlocked:hover {
 	border-color: var(--gold);
 	background: rgba(200, 169, 110, 0.08);
+	box-shadow: 0 0 14px rgba(200, 169, 110, 0.25);
 }
 .level-card.locked {
 	opacity: 0.35;
@@ -1053,29 +2050,34 @@ select.settings-select {
 .level-card.selected {
 	border-color: var(--gold);
 	background: rgba(200, 169, 110, 0.12);
+	box-shadow: 0 0 16px rgba(200, 169, 110, 0.3);
 }
 .level-num {
-	font-size: 1.3rem;
+	font-size: 1.9rem;
 	font-weight: 600;
 }
 .level-lock {
-	font-size: 1.1rem;
+	font-size: 1.4rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
 }
 
 .start-btn {
 	background: rgba(200, 169, 110, 0.15);
-	border: 1px solid var(--gold);
+	border: 2px solid var(--gold);
 	color: var(--gold);
+	text-shadow: 0 0 12px rgba(200, 169, 110, 0.55);
 	font-family: var(--font);
-	padding: 12px 60px;
+	padding: 14px 72px;
 	border-radius: 8px;
 	cursor: pointer;
-	font-size: 1rem;
+	font-size: 1.35rem;
 	letter-spacing: 0.15em;
 	transition: all 0.2s;
 }
 .start-btn:hover:not(:disabled) {
 	background: rgba(200, 169, 110, 0.25);
+	box-shadow: 0 0 16px rgba(200, 169, 110, 0.3);
 }
 .start-btn:disabled {
 	opacity: 0.3;
@@ -1143,11 +2145,10 @@ select.settings-select {
 }
 
 /* ── "You are" avatar indicator ── */
+/* «Это вы»: белое свечение по контуру спрайта (drop-shadow обводит
+   непрозрачные пиксели, а не прямоугольник) */
 .player-avatar.is-me {
-	border-color: var(--gold) !important;
-	box-shadow:
-		0 0 0 3px rgba(200, 169, 110, 0.35),
-		0 0 16px rgba(200, 169, 110, 0.3);
+	filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.55));
 }
 
 /* ── Host-left notification modal ── */
@@ -1158,39 +2159,52 @@ select.settings-select {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(6, 13, 26, 0.85);
+	background: rgba(6, 13, 26, 0.18);
 	animation: fade-in 0.2s ease;
 }
+/* Прозрачная панель со скруглённой светящейся золотой рамкой */
 .host-left-box {
-	background: var(--bg2);
-	border: 1px solid var(--gold);
-	border-radius: 12px;
+	background: rgba(6, 13, 26, 0.35);
+	border: 1px solid rgba(200, 169, 110, 0.7);
+	border-radius: 16px;
+	box-shadow:
+		0 0 18px rgba(200, 169, 110, 0.25),
+		inset 0 0 24px rgba(200, 169, 110, 0.08);
 	padding: 44px 64px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 28px;
+	gap: 34px;
 }
 .host-left-msg {
 	font-family: 'Cinzel', serif;
-	font-size: 1.25rem;
-	color: var(--text);
-	letter-spacing: 0.1em;
+	font-size: 2.1rem;
+	color: #fff;
+	text-shadow:
+		0 0 18px rgba(255, 255, 255, 0.5),
+		0 0 50px rgba(255, 255, 255, 0.2);
+	letter-spacing: 0.12em;
 }
 .host-left-ok {
-	background: rgba(200, 169, 110, 0.15);
-	border: 1px solid var(--gold);
-	color: var(--gold);
+	background: rgba(200, 169, 110, 0.08);
+	border: 1px solid rgba(200, 169, 110, 0.7);
+	border-radius: 10px;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
 	padding: 10px 48px;
-	border-radius: 8px;
 	cursor: pointer;
-	font-size: 0.95rem;
+	font-size: 1.35rem;
 	letter-spacing: 0.12em;
-	transition: background 0.2s;
+	transition: all 0.2s;
 }
 .host-left-ok:hover {
-	background: rgba(200, 169, 110, 0.3);
+	color: var(--gold);
+	background: rgba(200, 169, 110, 0.18);
+	box-shadow: 0 0 16px rgba(200, 169, 110, 0.4);
+	text-shadow:
+		0 0 14px rgba(200, 169, 110, 0.7),
+		0 0 36px rgba(200, 169, 110, 0.35);
 }
 
 /* ── Quit confirm modal ── */
@@ -1204,44 +2218,126 @@ select.settings-select {
 	background: rgba(6, 13, 26, 0.85);
 	animation: fade-in 0.2s ease;
 }
+/* Вариант сверху по центру — в полосе между верхом экрана и заголовком
+   «Настройки» (paddingTop считает JS), компактнее обычного */
+.confirm-modal.confirm-top {
+	align-items: flex-start;
+	/* Лёгкое затемнение: за окном видно, как изменились настройки */
+	background: rgba(6, 13, 26, 0.35);
+}
+/* Настройки открыты из игры — затемнение не добавляем совсем */
+.confirm-modal.confirm-clear {
+	background: none;
+}
+.confirm-modal.confirm-top .confirm-box {
+	padding: 8px 48px;
+	gap: 20px;
+}
+.confirm-modal.confirm-top .confirm-countdown {
+	margin-top: -8px; /* gap уменьшен — компенсация тоже меньше */
+}
+/* Hollow Knight: без панели — только затемнение .confirm-modal позади */
 .confirm-box {
-	background: var(--bg2);
-	border: 1px solid var(--border);
-	border-radius: 12px;
+	background: none;
+	border: none;
 	padding: 44px 64px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 28px;
+	gap: 34px;
 }
 .confirm-text {
 	font-family: 'Cinzel', serif;
-	font-size: 1.2rem;
-	color: var(--text);
+	font-size: 2.1rem;
+	color: #fff;
+	text-shadow:
+		0 0 18px rgba(255, 255, 255, 0.5),
+		0 0 50px rgba(255, 255, 255, 0.2);
 	letter-spacing: 0.12em;
+}
+/* Отсчёт в подтверждении разрешения (стиль Windows: 10с на возврат) */
+.confirm-countdown {
+	font-family: var(--font);
+	font-size: 1.25rem;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+	letter-spacing: 0.06em;
+	margin-top: -20px; /* ближе к вопросу, gap у бокса крупный */
+	opacity: 0.85;
+}
+.confirm-countdown span {
+	color: var(--gold);
+	text-shadow: 0 0 10px rgba(200, 169, 110, 0.6);
+}
+/* Полоска-таймер: золотая, утекает справа налево за 10с (= таймеру отката) */
+.confirm-timer-bar {
+	width: min(420px, 60vw);
+	height: 3px;
+	border-radius: 2px;
+	background: linear-gradient(to right, var(--gold), var(--orange));
+	box-shadow: 0 0 10px rgba(200, 169, 110, 0.55);
+	/* Сжимается к центру симметрично (а не утекает влево от центра колонки) */
+	transform-origin: center;
+	animation: confirm-timer-drain 10s linear forwards;
+}
+@keyframes confirm-timer-drain {
+	from {
+		transform: scaleX(1);
+	}
+	to {
+		transform: scaleX(0);
+	}
 }
 .confirm-buttons {
 	display: flex;
-	gap: 16px;
+	gap: 48px;
 }
 .confirm-yes,
 .confirm-no {
 	background: none;
-	border: 1px solid var(--border);
-	color: var(--text-dim);
+	border: none;
+	color: #fff;
+	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 8px 36px;
-	border-radius: 8px;
+	padding: 10px 24px;
 	cursor: pointer;
-	font-size: 0.9rem;
-	letter-spacing: 0.1em;
+	font-size: 1.35rem;
+	letter-spacing: 0.12em;
 	transition: all 0.2s;
 }
+/* Hover: подтверждение — салатовое, отмена — красноватая */
 .confirm-yes:hover {
-	border-color: var(--gold);
-	color: var(--gold);
+	color: #b4e85e;
+	text-shadow: 0 0 18px rgba(180, 232, 94, 0.7);
 }
 .confirm-no:hover {
-	border-color: rgba(255, 255, 255, 0.35);
-	color: var(--text);
+	color: #ff6060;
+	text-shadow: 0 0 18px rgba(255, 96, 96, 0.7);
+}
+
+/* ── Вариант с рамками (выход в меню) — как у модалки «Хост покинул игру» ── */
+.confirm-framed .confirm-box {
+	background: rgba(6, 13, 26, 0.35);
+	border: 1px solid rgba(200, 169, 110, 0.7);
+	border-radius: 16px;
+	box-shadow:
+		0 0 18px rgba(200, 169, 110, 0.25),
+		inset 0 0 24px rgba(200, 169, 110, 0.08);
+}
+.confirm-framed .confirm-yes,
+.confirm-framed .confirm-no {
+	background: rgba(200, 169, 110, 0.08);
+	border: 1px solid rgba(200, 169, 110, 0.7);
+	border-radius: 10px;
+	padding: 10px 40px;
+}
+.confirm-framed .confirm-yes:hover {
+	background: rgba(180, 232, 94, 0.12);
+	border-color: rgba(180, 232, 94, 0.7);
+	box-shadow: 0 0 16px rgba(180, 232, 94, 0.35);
+}
+.confirm-framed .confirm-no:hover {
+	background: rgba(255, 96, 96, 0.12);
+	border-color: rgba(255, 96, 96, 0.7);
+	box-shadow: 0 0 16px rgba(255, 96, 96, 0.35);
 }

@@ -1,6 +1,7 @@
 import { showScreen } from '../main.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { networkClient } from '../network/NetworkClient.js'
+import { i18n } from '../utils/i18n.js'
 
 export class LobbyScreen {
   constructor() {
@@ -8,6 +9,7 @@ export class LobbyScreen {
     this.listEl   = document.getElementById('server-list')
     this.slotsEl  = document.getElementById('save-slots')
     this.searchEl = document.getElementById('server-search')
+    this.backBtn  = document.getElementById('lobby-back-btn')
     this.rooms    = []
     this._unsub   = []
     this._onKey   = this._onKeyDown.bind(this)
@@ -33,6 +35,12 @@ export class LobbyScreen {
     }
 
     window.addEventListener('keydown', this._onKey)
+
+    // Кнопка «Назад» → главное меню (как Escape). Звуки hover/click — глобально в main.js.
+    this.backBtn.onclick = () => {
+      networkClient.leaveRoom()
+      showScreen('main-menu')
+    }
   }
 
   hide() {
@@ -52,7 +60,7 @@ export class LobbyScreen {
 
   _renderServers(rooms) {
     if (!rooms.length) {
-      this.listEl.innerHTML = '<div class="server-empty">Серверов нет</div>'
+      this.listEl.innerHTML = `<div class="server-empty">${i18n.t('lobby.no_servers')}</div>`
       return
     }
 
@@ -61,17 +69,17 @@ export class LobbyScreen {
       const canJoin  = status === 'waiting' && r.playerCount < 2
 
       const statusLabel = {
-        waiting: 'Ожидание игрока',
-        ready:   'Ожидание начала игры',
-        playing: 'Идёт игра'
-      }[status] || 'Ожидание игрока'
+        waiting: i18n.t('lobby.status_waiting'),
+        ready:   i18n.t('lobby.status_ready'),
+        playing: i18n.t('lobby.status_playing')
+      }[status] || i18n.t('lobby.status_waiting')
 
       return `
         <div class="server-item status-${status} ${canJoin ? 'can-join' : ''}" ${canJoin ? `data-join="${r.id}"` : ''}>
           <div class="server-item-info">
             <span class="server-item-name">${this._esc(r.name)}</span>
             <span class="server-item-meta">
-              Уровень ${r.level} · ${this._formatTime(r.playtime || 0)} · ${r.playerCount}/2
+              ${i18n.t('lobby.level')} ${r.level} · ${this._formatTime(r.playtime || 0)} · ${r.playerCount}/2
             </span>
             <span class="server-item-status status-label-${status}">${statusLabel}</span>
           </div>
@@ -86,20 +94,27 @@ export class LobbyScreen {
   _renderSlots() {
     const saves = SaveSystem.getSaves()
     this.slotsEl.innerHTML = saves.map(s => {
+      const num = s.slot + 1
       if (!s.roomId) return `
         <div class="save-slot empty" data-slot="${s.slot}">
-          <div class="save-slot-info">
-            <span class="save-slot-name">Новая игра</span>
+          <div class="save-slot-left">
+            <span class="save-slot-num">${num}.</span>
+            <div class="save-slot-info">
+              <span class="save-slot-name">${i18n.t('lobby.new')}</span>
+            </div>
           </div>
         </div>`
       const time = this._formatTime(s.playtime || 0)
       return `
         <div class="save-slot" data-slot="${s.slot}">
-          <div class="save-slot-info">
-            <span class="save-slot-name">${this._esc(s.roomName)}</span>
-            <span class="save-slot-meta">Уровень ${s.level || 1} — ${time}</span>
+          <div class="save-slot-left">
+            <span class="save-slot-num">${num}.</span>
+            <div class="save-slot-info">
+              <span class="save-slot-name">${this._esc(s.roomName)}</span>
+              <span class="save-slot-meta">${i18n.t('lobby.level')} ${s.level || 1} — ${time}</span>
+            </div>
           </div>
-          <button class="clear-save-btn" data-clear="${s.slot}">Удалить</button>
+          <button class="clear-save-btn" data-clear="${s.slot}">${i18n.t('lobby.delete')}</button>
         </div>`
     }).join('')
 
@@ -113,11 +128,11 @@ export class LobbyScreen {
 
         if (!save.roomId) {
           window.__currentSlotMaxLevel = 1
-          const name = `Мир${Math.floor(Math.random() * 900000 + 100000)}`
+          const name = `${i18n.t('ls.world')}${Math.floor(Math.random() * 900000 + 100000)}`
           networkClient.createRoom(name, 1, 0)
         } else {
           window.__currentSlotMaxLevel = save.level || 1
-          const name = save.roomName || `Мир${Math.floor(Math.random() * 900000 + 100000)}`
+          const name = save.roomName || `${i18n.t('ls.world')}${Math.floor(Math.random() * 900000 + 100000)}`
           networkClient.createRoom(name, save.level || 1, save.playtime || 0)
         }
       }
@@ -126,18 +141,35 @@ export class LobbyScreen {
     this.slotsEl.querySelectorAll('[data-clear]').forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation()
-        if (confirm('Удалить сохранение?')) {
-          SaveSystem.clearSave(+btn.dataset.clear)
-          this._renderSlots()
-        }
+        this._showClearConfirm(+btn.dataset.clear)
       }
     })
+  }
+
+  _showClearConfirm(slot) {
+    const modal = document.createElement('div')
+    modal.className = 'confirm-modal'
+    modal.innerHTML = `
+      <div class="confirm-box">
+        <p class="confirm-text">${i18n.t('lobby.delete_confirm')}</p>
+        <div class="confirm-buttons">
+          <button class="confirm-yes">${i18n.t('confirm.yes')}</button>
+          <button class="confirm-no">${i18n.t('confirm.no')}</button>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('.confirm-yes').onclick = () => {
+      modal.remove()
+      SaveSystem.clearSave(slot)
+      this._renderSlots()
+    }
+    modal.querySelector('.confirm-no').onclick = () => modal.remove()
   }
 
   _formatTime(sec) {
     const h = Math.floor(sec / 3600)
     const m = Math.floor((sec % 3600) / 60)
-    return `${h}ч ${m}м`
+    return `${h}${i18n.t('lobby.hours')} ${m}${i18n.t('lobby.minutes')}`
   }
   _esc(s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 }
