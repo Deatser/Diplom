@@ -8,7 +8,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const app = express()
 const httpServer = createServer(app)
-const io = new Server(httpServer, { cors: { origin: '*' } })
+// perMessageDeflate:false — без сжатия каждого сообщения: для частых мелких пакетов
+// (позиция игрока ~30/с) сжатие добавляет задержку и нагрузку, а выигрыша почти нет.
+const io = new Server(httpServer, {
+  cors: { origin: '*' },
+  perMessageDeflate: false,
+})
 
 // ── Browser → Terminal log relay (dev helper) ──
 app.use(express.json())

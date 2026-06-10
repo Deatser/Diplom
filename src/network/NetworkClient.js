@@ -17,7 +17,13 @@ class NetworkClient {
 
   connect() {
     if (this.socket?.connected) return
-    this.socket = io(WS_URL, { transports: ['websocket', 'polling'] })
+    // ТОЛЬКО websocket — без polling-фолбэка. Polling через интернет на частых
+    // сообщениях (синхронизация позиции) копит очередь и даёт растущий лаг до секунды.
+    // Render поддерживает websocket, так что фолбэк не нужен.
+    this.socket = io(WS_URL, {
+      transports: ['websocket'],
+      upgrade: false,
+    })
     this.socket.on('connect', () => this._emit('connected'))
     this.socket.on('disconnect', () => this._emit('disconnected'))
     this.socket.on('lobby:list', rooms => this._emit('lobby:list', rooms))

@@ -1190,9 +1190,11 @@ export class GameScene extends Phaser.Scene {
 		// Финальные кнопки групп 2/3 + текст finaltext (локально на каждом клиенте).
 		this._updateActionButtons()
 
-		// Send state every 16ms (~60fps) — tight sync for local LAN smoothness
+		// Шлём состояние ~30 раз/с (33мс). 60Гц через интернет — перебор: копится
+		// очередь сообщений → растущий лаг. 30Гц + dead-reckoning-интерполяция на
+		// приёме (updateRemote) выглядит так же плавно, но без задержки.
 		this._syncTimer += delta
-		if (this._syncTimer >= 16) {
+		if (this._syncTimer >= 33) {
 			this._syncTimer = 0
 			networkClient.sendInput(this.localPlayer.getNetworkState())
 		}

@@ -252,9 +252,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		const dtS = Math.min((delta || 16) / 1000, 0.05)
 		this._netAge += delta || 16
 
-		// Velocity prediction: extrapolate from last known position over time since update
-		// Only extrapolate up to 2 frames worth of time to avoid overshooting
-		const predDt = Math.min(this._netAge / 1000, dtS * 2)
+		// Dead reckoning: между пакетами (≈33мс) продолжаем движение по последней
+		// известной скорости, чтобы партнёр не «замирал» в паузах. Кап 250мс — чтобы
+		// при потере пакетов не уехать далеко (потом скорректируемся следующим пакетом).
+		const predDt = Math.min(this._netAge / 1000, 0.25)
 		const predX = this._netTarget.x + this._netVelX * predDt
 		const predY = this._netTarget.y + this._netVelY * predDt
 
@@ -263,18 +264,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 		const dist = Math.hypot(dx, dy)
 
 		let nx, ny
-		if (dist < 0.5) {
-			// Already basically there — snap
-			nx = predX
-			ny = predY
-		} else if (dist > 48) {
-			// Large teleport (respawn / level transition) — snap immediately
+		if (dist > 64) {
+			// Большой скачок (респаун / телепорт / крупный лаг) — снап без сглаживания
 			nx = predX
 			ny = predY
 		} else {
-			// Smooth lerp: converge in ~3 frames at 60fps for local LAN
-			// factor ≈ min(1, dtS * 30) ≈ 0.5 per frame → reaches within 1px in ~4 frames
-			const factor = Math.min(1, dtS * 30)
+			// Кадронезависимое экспоненциальное сглаживание к цели: одинаковая скорость
+			// сходимости при любом fps (≈0.39 за кадр на 60fps → догоняет за ~5 кадров).
+			const factor = 1 - Math.exp(-dtS * 30)
 			nx = this.x + dx * factor
 			ny = this.y + dy * factor
 		}
