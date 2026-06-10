@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: left2solve
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20

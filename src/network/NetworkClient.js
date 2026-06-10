@@ -1,6 +1,11 @@
 import { io } from 'socket.io-client'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000'
+// В проде клиент и Socket.io-сервер на одном origin (сервер раздаёт собранный
+// фронтенд) → подключаемся к origin страницы. В деве фронт на :8080, сервер на :3000.
+// VITE_WS_URL переопределяет всё (на случай отдельного хостинга сервера).
+const WS_URL =
+  import.meta.env.VITE_WS_URL ||
+  (import.meta.env.PROD ? window.location.origin : 'http://localhost:3000')
 
 class NetworkClient {
   constructor() {

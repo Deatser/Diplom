@@ -1,6 +1,10 @@
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const app = express()
 const httpServer = createServer(app)
@@ -226,6 +230,15 @@ io.on('connection', socket => {
     removePlayer(socket.id)
   })
 })
+
+// ── Раздача собранного фронтенда (прод) ──
+// `npm run build` кладёт статику в dist/. Сервер отдаёт её и Socket.io с одного
+// origin → игроки заходят по одному URL. В деве dist/ может не быть — тогда фронт
+// поднимает Vite на :8080, а это просто 404 на «/», что нормально.
+const distPath = path.join(__dirname, '..', 'dist')
+app.use(express.static(distPath))
+// SPA-фолбэк: любой GET (кроме уже обработанных и /socket.io/) → index.html
+app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')))
 
 const PORT = process.env.PORT || 3000
 httpServer.listen(PORT, () => console.log(`Left2Solve server on :${PORT}`))

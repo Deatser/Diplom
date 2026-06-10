@@ -21,10 +21,13 @@ console.log = (...args) => {
     return String(a)
   })
 
-  // 3) Шлём на сервер — ошибки игнорируем (сервер мог не запуститься)
-  fetch('http://localhost:3000/_log', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ args: serialized })
-  }).catch(() => {})
+  // 3) Шлём на сервер ТОЛЬКО в деве (в проде сервер на том же origin, релог логов
+  //    в терминал не нужен — иначе каждый console.log = лишний фейл-запрос).
+  if (import.meta.env.DEV) {
+    fetch('http://localhost:3000/_log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ args: serialized })
+    }).catch(() => {})
+  }
 }
