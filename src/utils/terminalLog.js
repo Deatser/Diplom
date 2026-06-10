@@ -7,6 +7,13 @@
 
 const _orig = console.log.bind(console)
 
+// Релей в терминал нужен ТОЛЬКО локально. Проверяем хост в рантайме (а не
+// import.meta.env.DEV) — так на задеплоенном домене fetch к localhost НИКОГДА не
+// выполнится, и браузер не будет просить разрешение «доступ к локальной сети».
+const _isLocalHost =
+  typeof location !== 'undefined' &&
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+
 console.log = (...args) => {
   // 1) Оставляем вывод в DevTools
   _orig(...args)
@@ -21,9 +28,8 @@ console.log = (...args) => {
     return String(a)
   })
 
-  // 3) Шлём на сервер ТОЛЬКО в деве (в проде сервер на том же origin, релог логов
-  //    в терминал не нужен — иначе каждый console.log = лишний фейл-запрос).
-  if (import.meta.env.DEV) {
+  // 3) Шлём на сервер ТОЛЬКО когда реально на localhost (дев). На проде — никогда.
+  if (_isLocalHost) {
     fetch('http://localhost:3000/_log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

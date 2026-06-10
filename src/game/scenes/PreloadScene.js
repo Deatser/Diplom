@@ -2,9 +2,14 @@ import Phaser from 'phaser'
 
 const BUILD = '2026-05-27-D'
 
-// Send log to browser console AND to npm terminal via /_log relay
+// Send log to browser console AND to npm terminal via /_log relay.
+// Релей к localhost ТОЛЬКО локально — иначе на проде браузер просит «доступ к
+// локальной сети» и сыплет фейл-запросами.
+const _isLocalHost =
+  location.hostname === 'localhost' || location.hostname === '127.0.0.1'
 function tlog(...args) {
   console.log(...args)
+  if (!_isLocalHost) return
   const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
   fetch('http://localhost:3000/_log', {
     method: 'POST',

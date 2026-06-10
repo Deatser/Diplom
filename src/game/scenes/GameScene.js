@@ -107,9 +107,14 @@ function _showHkPrompt(el, visible, onHidden) {
 	}, 320)
 }
 
-// Log to browser console + npm terminal simultaneously
+// Log to browser console + npm terminal simultaneously.
+// Релей к localhost ТОЛЬКО локально (на проде — только в DevTools), иначе браузер
+// просит «доступ к локальной сети» и каждый лог = лишний фейл-запрос.
+const _isLocalHost =
+	location.hostname === 'localhost' || location.hostname === '127.0.0.1'
 function tlog(...args) {
 	console.log(...args)
+	if (!_isLocalHost) return
 	const msg = args
 		.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
 		.join(' ')
