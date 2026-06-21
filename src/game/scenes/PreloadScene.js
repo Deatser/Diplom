@@ -127,6 +127,7 @@ export class PreloadScene extends Phaser.Scene {
     this.load.audio('collect1', '/assets/audio/collect1.wav')
     this.load.audio('collect2', '/assets/audio/collect2.wav')
     this.load.audio('scroll',   '/assets/audio/Scroll.mp3') // прокрутка букв (флип-табло)
+    this.load.audio('revive',   '/assets/audio/revive.mp3') // воскрешение: аура + текст
 
     // ── Player spritesheets 512×512, кадр 64×64 (8 cols × 8 rows) ────────────
     this.load.spritesheet('blue-knight',   '/assets/playerblue/blueknight.png',    { frameWidth: 64, frameHeight: 64 })

@@ -18,6 +18,8 @@ import AudioManager from '../AudioManager.js'
 import MusicManager from '../../systems/MusicManager.js'
 import Transition from '../../systems/Transition.js'
 import { i18n } from '../../utils/i18n.js'
+import { MAX_PLAYABLE_LEVEL } from '../../utils/levels.js'
+import { showRewardedAd } from '../../utils/yandex.js'
 
 // Фоновая музыка по уровням (HTML5 Audio, см. MusicManager). Нет записи → тишина.
 const LEVEL_MUSIC = {
@@ -465,6 +467,26 @@ export class GameScene extends Phaser.Scene {
 			this.remotePlayer.setPipeline(this._playerLightKey)
 		}
 
+		// Мягкая светящаяся обводка по силуэту (как у аватаров в лобби «Это вы»):
+		// тонкий холодно-белый ореол вокруг непрозрачных пикселей, чтобы персонажи
+		// не сливались с тёмным фоном. postFX (а НЕ preFX) — у игроков свой основной
+		// пайплайн SoftLightWeak, а preFX работает только со стандартным; postFX же
+		// накладывается ПОВЕРХ него отдельным проходом и не гасится ambient-светом,
+		// поэтому обводка одинаково читается даже в самых тёмных зонах уровня.
+		// Только WebGL: на Canvas-фолбэке postFX отсутствует (тихо пропускаем).
+		if (this.sys.renderer.type === Phaser.WEBGL) {
+			// addGlow(color, outerStrength, innerStrength, knockout, quality, distance)
+			//   color   — холодный сине-белый «лунный» тон обводки
+			//   outer   — сила внешнего свечения (тоньше/мягче = меньше)
+			//   inner=0 — внутрь спрайта не светим, только кромка
+			//   quality — больше = глаже градиент (тут всего 2 спрайта, можно щедро)
+			//   distance— радиус растекания в canvas-px (тоньше = меньше)
+			const addPlayerGlow = (p) =>
+				p.postFX.addGlow(0xcfe4ff, 0.5, 0, false, 0.5, 7)
+			addPlayerGlow(this.localPlayer)
+			addPlayerGlow(this.remotePlayer)
+		}
+
 		this.remotePlayer.body.setAllowGravity(false)
 		this.remotePlayer.body.setImmovable(true)
 
@@ -631,6 +653,7 @@ export class GameScene extends Phaser.Scene {
 				this._dying = false
 				this._inputLocked = false
 				setCursorHidden(true)
+				this._spawnReviveHalo(this.remotePlayer) // аура + текст над воскресшим партнёром
 			}),
 		)
 
@@ -2196,6 +2219,13 @@ export class GameScene extends Phaser.Scene {
 
 	// Переход на следующий уровень; чернота держится (Transition) до обратной диафрагмы.
 	_advanceToNextLevel() {
+		// Следующего уровня ещё нет (3–10) → не грузим его, а возвращаем ОБОИХ
+		// игроков в выбор уровня с подписью «ждите обновлений». Оба клиента
+		// проигрывают катсцену независимо и независимо доходят сюда.
+		if (this.levelId + 1 > MAX_PLAYABLE_LEVEL && this.levelId < 10) {
+			this._ejectToComingSoon()
+			return
+		}
 		const next = Math.min(this.levelId + 1, 10)
 		window.__currentSlotMaxLevel = next
 		const slot = window.__currentSlot
@@ -2214,6 +2244,22 @@ export class GameScene extends Phaser.Scene {
 			})
 		}
 		// гость: ждёт game:start (его обработчик перезапустит сцену)
+	}
+
+	// Выйти в выбор уровня после прохождения последнего готового уровня. Флаг
+	// __l2sComingSoon → LevelSelectScreen покажет подпись «ждите обновлений».
+	// Вызывается у каждого клиента независимо, поэтому сетевой broadcast не нужен.
+	_ejectToComingSoon() {
+		this._levelCompleteEl?.remove()
+		this._levelCompleteEl = null
+		for (const lbl of this._worldLabels) lbl.el?.remove()
+		this._worldLabels = []
+		saveSessionPlaytime()
+		this._netUnsub.forEach(u => u())
+		this._netUnsub = []
+		window.__l2sComingSoon = true
+		this.scene.stop()
+		exitToLevelSelect()
 	}
 
 	// Обратная диафрагма на старте уровня: чёрный круг РАСКРЫВАЕТСЯ из центра кадра.
@@ -3303,6 +3349,11 @@ export class GameScene extends Phaser.Scene {
 		const el = document.createElement('div')
 		el.className = 'game-fullscreen-overlay'
 		el.innerHTML = `
+			<button class="revive-close" aria-label="Close">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M5 5l14 14M19 5L5 19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+				</svg>
+			</button>
 			<div class="revive-title">${i18n.t('game.revive_title')}</div>
 			<div class="revive-sub">${i18n.t('game.revive_sub')}</div>
 			<div class="revive-bar-track"><div class="revive-bar-fill"></div></div>
@@ -3323,6 +3374,14 @@ export class GameScene extends Phaser.Scene {
 			this._showAdOverlay()
 		})
 
+		// Крестик: закрыть оффер досрочно (до истечения таймера) → обычный экран смерти.
+		el.querySelector('.revive-close').addEventListener('click', () => {
+			if (this._reviveTimer) { clearTimeout(this._reviveTimer); this._reviveTimer = null }
+			el.remove()
+			this._reviveOverlayEl = null
+			this._showDeathScreen()
+		})
+
 		// Полоска истекла за 5с → обычный экран смерти.
 		this._reviveTimer = setTimeout(() => {
 			this._reviveTimer = null
@@ -3332,23 +3391,22 @@ export class GameScene extends Phaser.Scene {
 		}, 5000)
 	}
 
-	// Заглушка рекламы: окно поверх с текстом и крестиком (закрыть). Закрыл →
-	// воскрешение (смерть сбрасывается, уровень продолжается).
+	// Реклама за вознаграждение (Yandex Games). Досмотрел ролик → воскрешение;
+	// пропустил/закрыл → обычный экран смерти. Вне Яндекса ролика нет → сразу
+	// воскрешаем (showRewardedAd ведёт себя как «просмотрено»). На время ролика
+	// глушим игровой звук, чтобы он не мешал рекламе.
 	_showAdOverlay() {
-		const el = document.createElement('div')
-		el.className = 'ad-overlay'
-		el.innerHTML = `
-			<div class="ad-box">
-				<button class="ad-close" aria-label="Close">
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M5 5l14 14M19 5L5 19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-					</svg>
-				</button>
-				<div class="ad-placeholder">${i18n.t('game.ad_placeholder')}</div>
-			</div>`
-		document.getElementById('hud-overlay').appendChild(el)
-		this._reviveOverlayEl = el // единое поле трекинга revive-оверлеев
-		el.querySelector('.ad-close').addEventListener('click', () => this._doRevive())
+		const wasMuted = this.sound.mute
+		this.sound.mute = true
+		let rewarded = false
+		showRewardedAd({
+			onReward: () => { rewarded = true },
+			onClose: (ok) => {
+				this.sound.mute = wasMuted
+				if (rewarded || ok) this._doRevive()
+				else this._showDeathScreen()
+			},
+		})
 	}
 
 	// Воскрешение умершего: смерть сбрасывается, игрок возвращается на последнюю
@@ -3370,7 +3428,75 @@ export class GameScene extends Phaser.Scene {
 		this._dying = false
 		this._inputLocked = false
 		setCursorHidden(true)
+		this._spawnReviveHalo(this.localPlayer) // аура + текст + звук над воскресшим
 		networkClient.revive() // партнёр снимает «погиб» и продолжает
+	}
+
+	// Эффект воскрешения: мягкое плавное свечение вокруг персонажа (DOM radial-gradient,
+	// как «Это вы» в лобби) + пиксельный текст «Вы успешно возродились!» того же размера,
+	// что финальный текст ожидания (.hud-world-final), + звук revive. Свечение и текст
+	// вместе всплывают на пару пикселей вверх и гаснут одновременно. Следуют за игроком.
+	_spawnReviveHalo(player) {
+		if (!player) return
+		if (this.cache.audio.exists('revive'))
+			this.sound.play('revive', { volume: 0.8 * AudioManager.getMultiplier('sfx') })
+
+		// Свечение — DOM-слой (полное разрешение экрана, без пикселизации). Центр прозрачный
+		// → персонаж виден, мягкое кольцо света по контуру.
+		const glowEl = document.createElement('div')
+		glowEl.style.cssText =
+			'position:absolute;pointer-events:none;border-radius:50%;' +
+			'background:radial-gradient(circle closest-side,' +
+			'transparent 26%,rgba(255,255,255,0.5) 50%,' +
+			'rgba(255,255,255,0.22) 70%,transparent 100%);'
+		document.getElementById('hud-prompts')?.appendChild(glowEl)
+		const GLOW_DIAM = 72 // диаметр свечения в МИРОВЫХ px (вокруг спрайта ~48px)
+		const TEXT_DY = -22 // смещение текста над головой игрока
+
+		// Текст — мировой DOM-лейбл (позиционируется в _updateDomPositions по wx/wy).
+		const textEl = document.createElement('div')
+		textEl.className = 'hud-world-label hud-world-sign hud-world-final'
+		textEl.style.textAlign = 'center'
+		textEl.style.whiteSpace = 'nowrap'
+		textEl.textContent = i18n.t('game.revive_success')
+		document.getElementById('hud-prompts')?.appendChild(textEl)
+		const label = { el: textEl, wx: player.x, wy: player.y + TEXT_DY }
+		this._worldLabels.push(label)
+
+		const draw = p => {
+			const rise = Math.round(p * 4) // всплываем вверх на ~4px
+			const a = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3 // держим, потом fade-out
+			// Свечение: позиция/размер в screen-px по зуму камеры.
+			const cam = this.cameras.main
+			const rect = this.game.canvas.getBoundingClientRect()
+			const sf = cam.zoom * (rect.width / this.game.config.width)
+			const sp = this._worldToScreen(player.x, player.y)
+			const d = GLOW_DIAM * sf
+			glowEl.style.width = d + 'px'
+			glowEl.style.height = d + 'px'
+			glowEl.style.left = sp.x - d / 2 + 'px'
+			glowEl.style.top = sp.y - d / 2 + 'px'
+			glowEl.style.opacity = String(a)
+			// Текст следует за игроком, всплывает и гаснет.
+			label.wx = player.x
+			label.wy = player.y + TEXT_DY - rise
+			textEl.style.opacity = String(a)
+		}
+
+		draw(0)
+		this.tweens.addCounter({
+			from: 0,
+			to: 1,
+			duration: 3950,
+			ease: 'Sine.easeOut',
+			onUpdate: tw => draw(tw.getValue()),
+			onComplete: () => {
+				const i = this._worldLabels.indexOf(label)
+				if (i !== -1) this._worldLabels.splice(i, 1)
+				textEl.remove()
+				glowEl.remove()
+			},
+		})
 	}
 
 	// Каждый кадр: запоминаем «хорошую» позицию для воскрешения. Не просто любую
@@ -3566,11 +3692,30 @@ export class GameScene extends Phaser.Scene {
 	_showLevelComplete() {
 		const nextLevel = Math.min(this.levelId + 1, 10)
 		const isLast = this.levelId >= 10
+		// Это последний готовый уровень (дальше — «скоро»): показываем, что уровень
+		// пройден, и через паузу возвращаем ОБОИХ игроков в выбор уровня с подписью
+		// «ждите обновлений». Третий уровень при этом НЕ запускается.
+		const noMoreLevels = !isLast && this.levelId >= MAX_PLAYABLE_LEVEL
 		const titleText = isLast
 			? i18n.t('game.game_complete')
 			: i18n.t('game.level_complete', { n: this.levelId })
 
 		this._closeAbilityOverlay() // уровень пройден → закрыть «Открыто:» у обоих
+
+		if (noMoreLevels) {
+			const el = document.createElement('div')
+			el.className = 'game-fullscreen-overlay'
+			el.innerHTML =
+				`<div class="game-overlay-title">${titleText}</div>` +
+				`<div class="game-overlay-subtitle">${i18n.t('game.no_more_levels')}</div>`
+			document.getElementById('hud-overlay').appendChild(el)
+			this._levelCompleteEl = el
+			// Оба клиента независимо доходят сюда (хост — по выходной зоне, гость — по
+			// событию levelComplete), поэтому таймер ставим у обоих: сеть не нужна.
+			this.time.delayedCall(4000, () => this._ejectToComingSoon())
+			return
+		}
+
 		const el = document.createElement('div')
 		el.className = 'game-fullscreen-overlay'
 		el.innerHTML = `<div class="game-overlay-title">${titleText}</div>`

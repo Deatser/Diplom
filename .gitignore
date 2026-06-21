@@ -11,3 +11,11 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build artifacts (собирается из dist/)
+build_yandex.zip
+*.zip
+
+# Не часть игры: демо-видео и отчёт ВКР (у Otchet свой node_modules)
+*.mp4
+Otchet/

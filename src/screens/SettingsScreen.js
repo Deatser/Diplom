@@ -107,7 +107,7 @@ export class SettingsScreen {
     return `
       <div class="settings-row">
         <label>Язык / Language</label>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:0.42vw">
           <button class="lang-btn ${s.lang==='ru'?'active':''}" data-lang="ru">Русский</button>
           <button class="lang-btn ${s.lang==='en'?'active':''}" data-lang="en">English</button>
         </div>
@@ -118,7 +118,7 @@ export class SettingsScreen {
     return ['master','music','sfx'].map(k => `
       <div class="settings-row">
         <label>${i18n.t(`settings.${k}`)}</label>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:0.52vw">
           <input type="range" min="0" max="10" value="${s.audio[k]}" data-audio="${k}" />
           <span class="range-val" id="val-${k}">${s.audio[k]}</span>
         </div>
@@ -153,7 +153,7 @@ export class SettingsScreen {
       </div>
       <div class="settings-row">
         <label>${i18n.t('settings.brightness')}</label>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:0.52vw">
           <input type="range" min="1" max="10" value="${s.video.brightness}" data-audio="brightness" data-video="brightness"/>
           <span class="range-val" id="val-brightness">${s.video.brightness}</span>
         </div>
@@ -169,15 +169,15 @@ export class SettingsScreen {
         <label>${i18n.t('settings.play_as_bot')}</label>
         <button class="toggle-btn ${on?'on':''}" data-bot="toggle">${on ? i18n.t('confirm.yes') : i18n.t('confirm.no')}</button>
       </div>
-      <div class="settings-row" style="opacity:0.5;font-size:0.8rem">
-        <label style="font-size:0.8rem">${i18n.t('settings.bot_hint')}</label>
+      <div class="settings-row" style="opacity:0.5;font-size:0.667vw">
+        <label style="font-size:0.667vw">${i18n.t('settings.bot_hint')}</label>
       </div>
       <div class="settings-row">
         <label>${i18n.t('settings.sync_ability_close')}</label>
         <button class="toggle-btn ${syncOn?'on':''}" data-syncability="toggle">${syncOn ? i18n.t('settings.on') : i18n.t('settings.off')}</button>
       </div>
-      <div class="settings-row" style="opacity:0.5;font-size:0.8rem">
-        <label style="font-size:0.8rem">${i18n.t('settings.sync_ability_hint')}</label>
+      <div class="settings-row" style="opacity:0.5;font-size:0.667vw">
+        <label style="font-size:0.667vw">${i18n.t('settings.sync_ability_hint')}</label>
       </div>`
   }
 
@@ -187,7 +187,7 @@ export class SettingsScreen {
         <span>${i18n.t(`key.${k}`)}</span>
         <button class="keybind-key" data-bind="${k}">${this._keyName(s.keybindings[k])}</button>
       </div>`).join('') +
-      `<button class="default-btn" data-default="keyboard" style="margin-top:16px">${i18n.t('settings.default')}</button>`
+      `<button class="default-btn" data-default="keyboard" style="margin-top:0.83vw">${i18n.t('settings.default')}</button>`
   }
 
   _keyName(code) {

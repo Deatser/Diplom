@@ -4791,7 +4791,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -5233,7 +5233,7 @@
          "objects":[],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -5280,7 +5280,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":3
+                         "value":1
                         }],
                  "rotation":0,
                  "type":"bot",
@@ -5309,7 +5309,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":2
+                         "value":1
                         }],
                  "rotation":0,
                  "type":"bot",
@@ -5338,7 +5338,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":15
+                         "value":14
                         }],
                  "rotation":0,
                  "type":"bot",
@@ -5444,7 +5444,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":0
+                         "value":2
                         }],
                  "rotation":0,
                  "type":"bot",
@@ -5526,7 +5526,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":1
+                         "value":2
                         }],
                  "rotation":0,
                  "type":"bot",
@@ -5743,7 +5743,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":2
+                         "value":0
                         }],
                  "rotation":0,
                  "type":"bot",
@@ -5767,7 +5767,7 @@
                         {
                          "name":"wait",
                          "type":"float",
-                         "value":4
+                         "value":1
                         }],
                  "rotation":0,
                  "type":"bot",

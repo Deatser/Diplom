@@ -499,6 +499,36 @@ body.cursor-hidden * {
 }
 
 /* ── «Второй шанс» — оффер воскрешения после смерти ── */
+/* Крестик закрытия — белый светящийся, правый верхний угол экрана */
+.revive-close {
+	position: absolute;
+	top: 24px;
+	right: 28px;
+	width: 44px;
+	height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	background: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	border-radius: 50%;
+	cursor: pointer;
+	pointer-events: auto;
+	box-shadow: 0 0 14px rgba(255, 255, 255, 0.45), inset 0 0 8px rgba(255, 255, 255, 0.15);
+	transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.revive-close:hover {
+	border-color: #fff;
+	background: rgba(255, 255, 255, 0.12);
+	box-shadow: 0 0 22px rgba(255, 255, 255, 0.75), inset 0 0 10px rgba(255, 255, 255, 0.25);
+	transform: scale(1.08);
+}
+.revive-close svg {
+	width: 22px;
+	height: 22px;
+	filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.7));
+}
 .revive-title {
 	font-family: 'Cinzel Decorative', serif;
 	font-size: 1.6rem;
@@ -1197,20 +1227,21 @@ body.cursor-hidden * {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 48px;
+	gap: 2.5vw;
 }
 
 .menu-title-wrap {
 	text-align: center;
 	/* Сдвиг вверх только визуальный (transform) → раскладка не меняется,
 	   кнопки остаются на месте */
-	transform: translateY(-56px);
+	transform: translateY(-2.92vw);
 }
 
 .menu-title {
 	font-family: 'Cinzel Decorative', serif;
-	/* ×1.2 от исходного clamp(2.8rem, 7vw, 5.5rem) */
-	font-size: clamp(3.35rem, 8.4vw, 6.6rem);
+	/* Чистый vw → одинаковые пропорции на любом 16:9 (1080p/1440p/4K).
+	   5.5vw = прежний вид на 1080p (был capped на 6.6rem=105.6px=5.5vw). */
+	font-size: 5.5vw;
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	color: #fff;
@@ -1223,9 +1254,9 @@ body.cursor-hidden * {
 
 .menu-ornament-brush {
 	/* Чуть уже заголовка: wrap (flex item) сжимается до ширины текста → 88% от него */
-	width: 88%; /* ширина следует за заголовком → выросла вместе с ним */
-	height: clamp(22px, 3.85vw, 41px); /* ×1.2 */
-	margin: 17px auto 0;
+	width: 82%; /* ширина следует за заголовком → выросла вместе с ним */
+	height: 2.14vw; /* prev capped 41px на 1080p */
+	margin: 0.89vw auto 0;
 	background-color: var(--text);
 	/* 100% 100% — растягиваем мазок на всю ширину, не сохраняя пропорции PNG */
 	-webkit-mask: url('/assets/stuff/brush2.png') center / 100% 100% no-repeat;
@@ -1237,8 +1268,8 @@ body.cursor-hidden * {
 /* Уменьшенный мазок под заголовками «Пауза»/«Настройки» (их контейнеры —
    flex на всю ширину, 88% было бы шире текста) */
 .menu-ornament-brush.brush-sm {
-	width: min(220px, 50vw);
-	height: clamp(12px, 1.6vw, 20px);
+	width: min(11.46vw, 50vw); /* 220px на 1080p → vw */
+	height: 1.04vw; /* prev capped 20px */
 	margin: 0 auto;
 }
 
@@ -1255,24 +1286,26 @@ body.cursor-hidden * {
 	color: var(--text);
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
 	font-family: var(--font);
-	font-size: clamp(1rem, 2vw, 1.35rem);
+	/* Чистый vw → одинаково на любом 16:9 (1.125vw = прежний capped 1.35rem=21.6px на 1080p).
+	   Базовый размер для кнопок настроек/паузы/лобби; главное меню перебивает в #main-nav. */
+	font-size: 1.125vw;
 	letter-spacing: 0.12em;
-	padding: 10px 60px;
+	padding: 0.52vw 3.13vw;
 	cursor: pointer;
 	transition:
 		color 0.2s,
 		text-shadow 0.2s;
 	position: relative;
 }
-/* Кнопки главного меню — ×1.4 (остальные экраны не трогаем) */
+/* Кнопки главного меню — чистый vw (1.583vw = прежний вид на 1080p, был capped 1.9rem=30.4px) */
 #main-nav .menu-item {
-	font-size: clamp(1.4rem, 2.8vw, 1.9rem);
-	padding: 14px 84px;
+	font-size: 1.583vw;
+	padding: 0.73vw 4.38vw;
 }
 #main-nav {
 	gap: 0;
-	/* Визуальный сдвиг вниз — раскладка и заголовок не двигаются */
-	transform: translateY(24px);
+	/* Визуальный сдвиг — раскладка и заголовок не двигаются */
+	transform: translateY(0.25vw);
 }
 .menu-item::before,
 .menu-item::after {
@@ -1289,11 +1322,11 @@ body.cursor-hidden * {
 }
 .menu-item::before {
 	right: 100%;
-	margin-right: -40px;
+	margin-right: -2.08vw;
 }
 .menu-item::after {
 	left: 100%;
-	margin-left: -40px;
+	margin-left: -2.08vw;
 }
 
 .menu-item:hover,
@@ -1319,9 +1352,9 @@ body.cursor-hidden * {
 
 .menu-version {
 	position: fixed;
-	bottom: 24px;
-	left: 32px;
-	font-size: 0.75rem;
+	bottom: 1.25vw;
+	left: 1.67vw;
+	font-size: 0.625vw;
 	color: var(--text-dim);
 	opacity: 0.5;
 }
@@ -1331,12 +1364,12 @@ body.cursor-hidden * {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 24px;
+	gap: 1.25vw;
 	width: 100%;
 }
 .settings-title {
 	font-family: 'Cinzel Decorative', serif;
-	font-size: 3rem;
+	font-size: 2.5vw;
 	color: #fff;
 	text-shadow:
 		0 0 20px rgba(255, 255, 255, 0.5),
@@ -1346,18 +1379,18 @@ body.cursor-hidden * {
 .settings-panel {
 	background: none;
 	border: none;
-	padding: 32px 40px;
-	min-width: 480px;
-	max-width: 600px;
+	padding: 1.67vw 2.08vw;
+	min-width: 25vw;
+	max-width: 31.25vw;
 	width: 100%;
 }
 .settings-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 22px 0;
+	padding: 1.15vw 0;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-	font-size: 1.4rem;
+	font-size: 1.17vw;
 	letter-spacing: 0.05em;
 }
 .settings-row:last-child {
@@ -1377,10 +1410,10 @@ body.cursor-hidden * {
 	color: #fff;
 	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 7px 20px;
+	padding: 0.36vw 1.04vw;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 1.05rem;
+	font-size: 0.875vw;
 	transition: border-color 0.2s;
 }
 .lang-btn.active {
@@ -1391,41 +1424,41 @@ body.cursor-hidden * {
 
 input[type='range'] {
 	-webkit-appearance: none;
-	width: 200px;
-	height: 4px;
+	width: 10.42vw;
+	height: 0.21vw;
 	background: rgba(255, 255, 255, 0.3);
 	border-radius: 2px;
 	outline: none;
 }
 input[type='range']::-webkit-slider-thumb {
 	-webkit-appearance: none;
-	width: 17px;
-	height: 17px;
+	width: 0.885vw;
+	height: 0.885vw;
 	border-radius: 50%;
 	background: var(--gold);
 	box-shadow: 0 0 10px rgba(200, 169, 110, 0.6);
 	cursor: pointer;
 }
 .range-val {
-	width: 32px;
+	width: 1.67vw;
 	text-align: right;
 	color: var(--gold);
 	text-shadow: 0 0 10px rgba(200, 169, 110, 0.5);
-	font-size: 1.1rem;
+	font-size: 0.917vw;
 }
 
 .default-btn {
 	display: block;
-	margin: 20px auto 0;
+	margin: 1.04vw auto 0;
 	background: none;
 	border: 2px solid rgba(255, 255, 255, 0.3);
 	color: #fff;
 	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 9px 28px;
+	padding: 0.47vw 1.46vw;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 1.05rem;
+	font-size: 0.875vw;
 	letter-spacing: 0.08em;
 	transition:
 		border-color 0.2s,
@@ -1441,9 +1474,9 @@ input[type='range']::-webkit-slider-thumb {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 15px 0;
+	padding: 0.78vw 0;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-	font-size: 1.3rem;
+	font-size: 1.083vw;
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
@@ -1456,12 +1489,12 @@ input[type='range']::-webkit-slider-thumb {
 	color: #fff;
 	text-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
 	font-family: monospace;
-	padding: 5px 14px;
+	padding: 0.26vw 0.73vw;
 	border-radius: 4px;
 	cursor: pointer;
-	min-width: 110px;
+	min-width: 5.73vw;
 	text-align: center;
-	font-size: 1rem;
+	font-size: 0.833vw;
 	transition: border-color 0.2s;
 }
 .keybind-key:hover {
@@ -1488,9 +1521,9 @@ select.settings-select {
 	color: #fff;
 	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 6px 12px;
+	padding: 0.31vw 0.625vw;
 	border-radius: 6px;
-	font-size: 1rem;
+	font-size: 0.833vw;
 	cursor: pointer;
 }
 /* Выпадающий список рисуется системно — тёмный фон только у опций,
@@ -1506,10 +1539,10 @@ select.settings-select option {
 	color: #fff;
 	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 6px 18px;
+	padding: 0.31vw 0.94vw;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 1.05rem;
+	font-size: 0.875vw;
 	transition: all 0.2s;
 }
 .toggle-btn.on {
@@ -1834,8 +1867,8 @@ select.settings-select option {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 14px;
-	width: min(900px, 90vw);
+	gap: 0.73vw;
+	width: min(46.875vw, 90vw); /* 900px на 1080p → vw, чтобы росло с экраном */
 	/* На всю высоту: имя+подсказка прижаты к верху, .level-center
 	   центрирует сетку и кнопку в оставшемся пространстве */
 	height: 100%;
@@ -1848,19 +1881,19 @@ select.settings-select option {
 	top: 50%;
 	left: 50%;
 	transform: translate(-50%, -50%);
-	width: min(900px, 90vw);
+	width: min(46.875vw, 90vw);
 }
 .level-center .start-btn {
 	position: absolute;
-	top: calc(100% + 28px);
+	top: calc(100% + 1.46vw);
 	left: 50%;
 	transform: translateX(-50%);
 }
 .server-name-wrap {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	font-size: 2.7rem;
+	gap: 0.625vw;
+	font-size: 2.25vw;
 }
 .server-name-text {
 	color: #fff;
@@ -1872,7 +1905,7 @@ select.settings-select option {
 .server-name-text.renamable {
 	cursor: pointer;
 	position: relative;
-	padding-bottom: 4px;
+	padding-bottom: 0.21vw;
 	transition: text-shadow 0.25s;
 }
 .server-name-text.renamable::after {
@@ -1899,9 +1932,9 @@ select.settings-select option {
 	color: #fff;
 	text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	font-family: var(--font);
-	padding: 4px 12px;
+	padding: 0.21vw 0.625vw;
 	border-radius: 6px;
-	font-size: 1.4rem;
+	font-size: 1.17vw;
 	outline: none;
 	letter-spacing: 0.08em;
 }
@@ -1910,7 +1943,7 @@ select.settings-select option {
 }
 
 .level-select-hint {
-	font-size: 1.6rem;
+	font-size: 1.33vw;
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 	letter-spacing: 0.08em;
@@ -1930,7 +1963,7 @@ select.settings-select option {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	font-size: 1.5rem;
+	font-size: 1.25vw;
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 	letter-spacing: 0.1em;
@@ -2015,7 +2048,7 @@ select.settings-select option {
 .levels-grid {
 	display: grid;
 	grid-template-columns: repeat(5, 1fr);
-	gap: 12px;
+	gap: 0.625vw;
 	width: 100%;
 }
 .level-card {
@@ -2025,12 +2058,12 @@ select.settings-select option {
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 6px;
+	gap: 0.31vw;
 	cursor: pointer;
 	border: 3px solid var(--border);
 	background: none;
 	transition: all 0.2s;
-	font-size: 1rem;
+	font-size: 0.833vw;
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
@@ -2047,17 +2080,59 @@ select.settings-select option {
 	opacity: 0.35;
 	cursor: not-allowed;
 }
+/* Уровни «скоро» (3–10): недоступны, при наведении — подсказка «ждите обновлений» */
+.level-card.coming-soon {
+	opacity: 0.5;
+	cursor: not-allowed;
+	border-color: rgba(255, 255, 255, 0.18);
+	position: relative;
+}
+.level-card.coming-soon .level-num {
+	opacity: 0.55;
+}
+.level-card.coming-soon .level-lock {
+	opacity: 0.7;
+	text-shadow: none;
+}
+.level-card.coming-soon .level-soon {
+	font-size: 0.57vw;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--gold);
+	opacity: 0.85;
+}
+/* Стилизованный тултип над карточкой «скоро» */
+.level-card[data-tip]:hover::after {
+	content: attr(data-tip);
+	position: absolute;
+	bottom: calc(100% + 0.5vw);
+	left: 50%;
+	transform: translateX(-50%);
+	white-space: nowrap;
+	background: rgba(6, 13, 26, 0.95);
+	border: 1px solid rgba(200, 169, 110, 0.7);
+	color: #fff;
+	font-family: var(--font);
+	font-size: 0.72vw;
+	letter-spacing: 0.08em;
+	padding: 0.4vw 0.7vw;
+	border-radius: 6px;
+	box-shadow: 0 0 14px rgba(200, 169, 110, 0.3);
+	pointer-events: none;
+	z-index: 40;
+	animation: fade-in 0.15s ease;
+}
 .level-card.selected {
 	border-color: var(--gold);
 	background: rgba(200, 169, 110, 0.12);
 	box-shadow: 0 0 16px rgba(200, 169, 110, 0.3);
 }
 .level-num {
-	font-size: 1.9rem;
+	font-size: 1.583vw;
 	font-weight: 600;
 }
 .level-lock {
-	font-size: 1.4rem;
+	font-size: 1.17vw;
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
 }
@@ -2068,10 +2143,10 @@ select.settings-select option {
 	color: var(--gold);
 	text-shadow: 0 0 12px rgba(200, 169, 110, 0.55);
 	font-family: var(--font);
-	padding: 14px 72px;
+	padding: 0.73vw 3.75vw;
 	border-radius: 8px;
 	cursor: pointer;
-	font-size: 1.35rem;
+	font-size: 1.125vw;
 	letter-spacing: 0.15em;
 	transition: all 0.2s;
 }
@@ -2109,12 +2184,12 @@ select.settings-select option {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 36px;
+	gap: 1.875vw;
 	animation: fade-in 0.18s ease;
 }
 .pause-title {
 	font-family: 'Cinzel Decorative', serif;
-	font-size: 2.6rem;
+	font-size: 2.167vw;
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	color: #fff;
@@ -2136,12 +2211,12 @@ select.settings-select option {
 	display: none;
 }
 #settings-back-btn {
-	margin-top: 12px;
+	margin-top: 0.625vw;
 }
 /* Wider panel when nav is gone */
 .settings-panel {
-	min-width: 520px;
-	max-width: 700px;
+	min-width: 27.08vw;
+	max-width: 36.46vw;
 }
 
 /* ── "You are" avatar indicator ── */
@@ -2205,6 +2280,35 @@ select.settings-select option {
 	text-shadow:
 		0 0 14px rgba(200, 169, 110, 0.7),
 		0 0 36px rgba(200, 169, 110, 0.35);
+}
+
+/* ── Тост «ждите обновлений» на экране выбора уровня ── */
+.coming-soon-toast {
+	position: fixed;
+	top: 6vh;
+	left: 50%;
+	transform: translate(-50%, -20px);
+	z-index: 300;
+	background: rgba(6, 13, 26, 0.92);
+	border: 1px solid rgba(200, 169, 110, 0.7);
+	border-radius: 12px;
+	padding: 16px 40px;
+	font-family: 'Cinzel', serif;
+	font-size: 1.2rem;
+	letter-spacing: 0.1em;
+	color: #fff;
+	text-align: center;
+	text-shadow: 0 0 14px rgba(255, 255, 255, 0.4);
+	box-shadow:
+		0 0 20px rgba(200, 169, 110, 0.3),
+		inset 0 0 24px rgba(200, 169, 110, 0.08);
+	opacity: 0;
+	transition: opacity 0.45s ease, transform 0.45s ease;
+	pointer-events: none;
+}
+.coming-soon-toast.show {
+	opacity: 1;
+	transform: translate(-50%, 0);
 }
 
 /* ── Quit confirm modal ── */

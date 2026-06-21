@@ -3,6 +3,7 @@ import { networkClient } from '../network/NetworkClient.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { startGame } from '../game/GameManager.js'
 import { i18n } from '../utils/i18n.js'
+import { MAX_PLAYABLE_LEVEL } from '../utils/levels.js'
 
 export class LevelSelectScreen {
   constructor() {
@@ -74,14 +75,22 @@ export class LevelSelectScreen {
     this.nameDisplay.classList.toggle('renamable', this.role === 'host')
     this.nameDisplay.title = this.role === 'host' ? i18n.t('ls.rename_tip') : ''
 
-    // Use server-provided selectedLevel if available, else default to maxLevel
-    this.selectedLevel = selectedLevel || Math.min(this.maxLevel, 10)
+    // Use server-provided selectedLevel if available, else default to maxLevel.
+    // Никогда не выбираем уровень из «скоро» (3–10) — играть в них нельзя.
+    this.selectedLevel = Math.min(selectedLevel || this.maxLevel, MAX_PLAYABLE_LEVEL)
     this._renderGrid()
     this._updateStart()
     this._setupRename()
     this._updateRoleIndicator()
     this._updateHint()
     this._startAvatarAnims()
+
+    // Игрока выкинуло сюда после прохождения последнего готового уровня —
+    // показываем подпись «ждите обновлений» (флаг ставит GameScene у ОБОИХ игроков).
+    if (window.__l2sComingSoon) {
+      window.__l2sComingSoon = false
+      this._showComingSoonNotice()
+    }
 
     window.addEventListener('keydown', this._onKey)
 
@@ -165,6 +174,7 @@ export class LevelSelectScreen {
     this._unsub.forEach(u => u()); this._unsub = []
     window.removeEventListener('keydown', this._onKey)
     this._avatarTimers.forEach(t => clearTimeout(t)); this._avatarTimers = []
+    document.querySelector('.coming-soon-toast')?.remove()
     this.el.querySelectorAll('.player-avatar').forEach(av =>
       av.classList.remove('anim-attack', 'anim-block'))
   }
@@ -192,17 +202,23 @@ export class LevelSelectScreen {
   }
 
   _renderGrid() {
-    const maxLevel = this.maxLevel
+    const maxLevel = Math.min(this.maxLevel, MAX_PLAYABLE_LEVEL)
     if (this.selectedLevel > maxLevel) this.selectedLevel = Math.max(1, maxLevel)
 
+    const tip = i18n.t('ls.coming_soon_tip')
     this.grid.innerHTML = Array.from({ length: 10 }, (_, i) => {
       const n = i + 1
-      const unlocked = n <= maxLevel
+      // Уровни 3–10 ещё не готовы → «скоро»: недоступны, при наведении подсказка.
+      const comingSoon = n > MAX_PLAYABLE_LEVEL
+      const unlocked = n <= maxLevel && !comingSoon
       const sel = (n === this.selectedLevel && unlocked) ? 'selected' : ''
+      const cls = comingSoon ? 'coming-soon' : (unlocked ? 'unlocked' : 'locked')
+      const glyph = comingSoon ? '⏳' : (unlocked ? '✦' : '✧')
       return `
-        <div class="level-card ${unlocked ? 'unlocked' : 'locked'} ${sel}" data-level="${n}">
+        <div class="level-card ${cls} ${sel}" data-level="${n}"${comingSoon ? ` data-tip="${tip}"` : ''}>
           <span class="level-num">${n}</span>
-          <span class="level-lock">${unlocked ? '✦' : '✧'}</span>
+          <span class="level-lock">${glyph}</span>
+          ${comingSoon ? `<span class="level-soon">${i18n.t('ls.coming_soon')}</span>` : ''}
         </div>`
     }).join('')
 
@@ -255,6 +271,21 @@ export class LevelSelectScreen {
     hint.textContent = this.role === 'host'
       ? i18n.t('ls.choose')
       : i18n.t('ls.waiting_host_choose')
+  }
+
+  // Тост «ждите обновлений» сверху по центру — появляется при возврате после
+  // прохождения последнего готового уровня и сам исчезает через несколько секунд.
+  _showComingSoonNotice() {
+    document.querySelector('.coming-soon-toast')?.remove()
+    const toast = document.createElement('div')
+    toast.className = 'coming-soon-toast'
+    toast.textContent = i18n.t('ls.coming_soon_notice')
+    document.body.appendChild(toast)
+    requestAnimationFrame(() => toast.classList.add('show'))
+    setTimeout(() => {
+      toast.classList.remove('show')
+      setTimeout(() => toast.remove(), 500)
+    }, 5000)
   }
 
   // Show notification when host leaves the room

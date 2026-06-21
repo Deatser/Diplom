@@ -15,6 +15,7 @@ import { LobbyScreen } from './screens/LobbyScreen.js'
 import { LevelSelectScreen } from './screens/LevelSelectScreen.js'
 import MusicManager from './systems/MusicManager.js'
 import Sfx from './systems/Sfx.js'
+import { initYandex, yandexReady, getPlatformLang } from './utils/yandex.js'
 
 const MENU_MUSIC = '/assets/audio/Main%20Theme.mp3'
 const screens = {}
@@ -126,7 +127,26 @@ export function hideAllForGame() {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'))
 }
 
+// Выбирал ли игрок язык сам (есть сохранённое значение)? Если да — не перебиваем
+// его языком платформы при следующих заходах.
+function hasSavedLang() {
+  try { if (JSON.parse(localStorage.getItem('l2s_settings'))?.lang) return true } catch {}
+  return !!localStorage.getItem('l2s_lang')
+}
+
 function init() {
+  // Yandex Games SDK: инициализируем и сообщаем платформе о готовности (убрать спиннер).
+  // Вне Яндекса оба вызова — пустышки, игра запускается как обычно.
+  initYandex().then(() => {
+    // При ПЕРВОМ заходе (игрок ещё не выбирал язык сам) показываем игру на языке
+    // платформы — этого требует модерация Яндекса. Дальше работает выбор в настройках.
+    if (!hasSavedLang()) {
+      const pl = getPlatformLang()
+      if (pl && pl !== i18n.lang) i18n.setLang(pl)
+    }
+    yandexReady()
+  })
+
   initParticles()
   bindUiSounds()
   networkClient.connect()
