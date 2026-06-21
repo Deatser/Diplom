@@ -23,8 +23,8 @@ import { showRewardedAd } from '../../utils/yandex.js'
 
 // Фоновая музыка по уровням (HTML5 Audio, см. MusicManager). Нет записи → тишина.
 const LEVEL_MUSIC = {
-	1: '/assets/audio/Level1.mp3',
-	2: '/assets/audio/Level2.mp3',
+	1: 'assets/audio/Level1.mp3',
+	2: 'assets/audio/Level2.mp3',
 }
 
 // Параллакс level1 (px-1..px-7) идёт по глубинам -20..-12, px-1 (фон) непрозрачен
@@ -751,9 +751,9 @@ export class GameScene extends Phaser.Scene {
 			this._orbPromptEl = document.createElement('div')
 			this._orbPromptEl.className = 'hud-world-label hud-world-prompt'
 			this._orbPromptEl.innerHTML = `
-				<img class="hk-orn hk-orn-top" src="/assets/pngfortext/top.png" onerror="this.style.display='none'" />
+				<img class="hk-orn hk-orn-top" src="assets/pngfortext/top.png" onerror="this.style.display='none'" />
 				<span class="hk-text" data-i18n="game.pickup">${i18n.t('game.pickup')}</span>
-				<img class="hk-orn hk-orn-bot" src="/assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
+				<img class="hk-orn hk-orn-bot" src="assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
 			`
 			this._orbPromptEl.style.display = 'none'
 			document.getElementById('hud-prompts').appendChild(this._orbPromptEl)
@@ -782,9 +782,9 @@ export class GameScene extends Phaser.Scene {
 			this._lampLeverPromptEl = document.createElement('div')
 			this._lampLeverPromptEl.className = 'hud-world-label hud-world-prompt'
 			this._lampLeverPromptEl.innerHTML = `
-				<img class="hk-orn hk-orn-top" src="/assets/pngfortext/top.png" onerror="this.style.display='none'" />
+				<img class="hk-orn hk-orn-top" src="assets/pngfortext/top.png" onerror="this.style.display='none'" />
 				<span class="hk-text" data-i18n="game.inspect">${i18n.t('game.inspect')}</span>
-				<img class="hk-orn hk-orn-bot" src="/assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
+				<img class="hk-orn hk-orn-bot" src="assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
 			`
 			this._lampLeverPromptEl.style.display = 'none'
 			document
@@ -985,7 +985,7 @@ export class GameScene extends Phaser.Scene {
 			el.className = 'tut-hint'
 			el.innerHTML = `
 				<span class="tut-key tut-key-mouse">
-					<img src="/assets/pngfortext/mouseleft.png" onerror="this.style.display='none'" />
+					<img src="assets/pngfortext/mouseleft.png" onerror="this.style.display='none'" />
 				</span>
 				<span class="tut-label">${i18n.t('game.tut_interact')}</span>
 			`
@@ -1474,7 +1474,7 @@ export class GameScene extends Phaser.Scene {
 			<div class="ao-subtitle">${i18n.t('game.unlocked')}</div>
 			<div class="ao-name">${i18n.t(`ability.${name}`)}</div>
 			<div class="ao-tip">${i18n.t(`hint.${name}`, { key: hintKey[name] || '' })}</div>
-			<img class="ao-lmb" src="/assets/pngfortext/mouseleft.png" onerror="this.style.display='none'" />
+			<img class="ao-lmb" src="assets/pngfortext/mouseleft.png" onerror="this.style.display='none'" />
 		`
 		document.getElementById('hud-overlay').appendChild(el)
 		this._abilityOverlayEl = el
@@ -3189,9 +3189,9 @@ export class GameScene extends Phaser.Scene {
 					const testPromptEl = document.createElement('div')
 					testPromptEl.className = 'hud-world-label hud-world-prompt-test'
 					testPromptEl.innerHTML = `
-						<img class="hk-orn hk-orn-top" src="/assets/pngfortext/top.png" onerror="this.style.display='none'" />
+						<img class="hk-orn hk-orn-top" src="assets/pngfortext/top.png" onerror="this.style.display='none'" />
 						<span class="hk-text">${testLabels[type]}</span>
-						<img class="hk-orn hk-orn-bot" src="/assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
+						<img class="hk-orn hk-orn-bot" src="assets/pngfortext/bottom.png" onerror="this.style.display='none'" />
 					`
 					testPromptEl.style.display = 'none'
 					document.getElementById('hud-prompts').appendChild(testPromptEl)

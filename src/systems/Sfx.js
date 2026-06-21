@@ -3,10 +3,10 @@ import { SaveSystem } from './SaveSystem.js'
 // Одноразовые UI-звуки (HTML5 Audio). Каждый play создаёт новый Audio → звуки
 // могут накладываться. Громкость = base × master × sfx из настроек.
 const FILES = {
-	slide: '/assets/audio/slide.ogg',
-	clickOK: '/assets/audio/clickOK.ogg',
-	clickBAD: '/assets/audio/clickBAD.ogg',
-	levelStart: '/assets/audio/LevelStart.ogg',
+	slide: 'assets/audio/slide.ogg',
+	clickOK: 'assets/audio/clickOK.ogg',
+	clickBAD: 'assets/audio/clickBAD.ogg',
+	levelStart: 'assets/audio/LevelStart.ogg',
 }
 
 const Sfx = {

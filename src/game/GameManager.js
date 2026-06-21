@@ -150,7 +150,7 @@ function _doStartGame(levelId, role) {
 
         // Web Worker тикает setInterval(16ms) даже в фоновой вкладке.
         // На каждый тик мы вручную шагаем Phaser-loop, если rAF перестал дёргаться.
-        _tickWorker = new Worker('/game-tick-worker.js')
+        _tickWorker = new Worker('game-tick-worker.js')
         let lastWorkerTick = 0
         _tickWorker.onmessage = () => {
           if (!game.loop) return

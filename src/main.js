@@ -17,7 +17,7 @@ import MusicManager from './systems/MusicManager.js'
 import Sfx from './systems/Sfx.js'
 import { initYandex, yandexReady, getPlatformLang } from './utils/yandex.js'
 
-const MENU_MUSIC = '/assets/audio/Main%20Theme.mp3'
+const MENU_MUSIC = 'assets/audio/Main%20Theme.mp3'
 const screens = {}
 let currentScreen = null
 

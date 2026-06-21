@@ -39,31 +39,31 @@ export class PreloadScene extends Phaser.Scene {
     // роняет загрузку всей текстуры и фон не рисуется.
     const LEVELS_WITH_NORMAL = new Set([1])
     for (const i of TILED_LEVELS) {
-      this.load.tilemapTiledJSON(`level${i}`, `/levels/level${i}/level${i}.json`)
-      const baked = `/levels/level${i}/level${i}.png`
+      this.load.tilemapTiledJSON(`level${i}`, `levels/level${i}/level${i}.json`)
+      const baked = `levels/level${i}/level${i}.png`
       this.load.image(`level${i}-baked`, LEVELS_WITH_NORMAL.has(i)
-        ? [baked, `/levels/level${i}/level${i}_n.png`]
+        ? [baked, `levels/level${i}/level${i}_n.png`]
         : baked)
     }
 
     // Door overlay PNGs (full-map size, placed at 0,0 like baked bg):
     //   closed1/open1 = behind player | closed2/open2 = in front of player (pass-through effect)
-    this.load.image('level1-door-closed1', '/levels/level1/level1doorclosed1.png')
-    this.load.image('level1-door-closed2', '/levels/level1/level1doorclosed2.png')
-    this.load.image('level1-door-open1',   '/levels/level1/level1dooropen1.png')
-    this.load.image('level1-door-open2',   '/levels/level1/level1dooropen2.png')
+    this.load.image('level1-door-closed1', 'levels/level1/level1doorclosed1.png')
+    this.load.image('level1-door-closed2', 'levels/level1/level1doorclosed2.png')
+    this.load.image('level1-door-open1',   'levels/level1/level1dooropen1.png')
+    this.load.image('level1-door-open2',   'levels/level1/level1dooropen2.png')
 
     // Кнопка-рычаг: btn1 = отжата (по умолчанию), btn2 = нажата (когда на ней игрок)
-    this.load.image('btn1', '/assets/stuff/btn1.png')
-    this.load.image('btn2', '/assets/stuff/btn2.png')
+    this.load.image('btn1', 'assets/stuff/btn1.png')
+    this.load.image('btn2', 'assets/stuff/btn2.png')
     // Кнопки финала: host (group 2) и player/гость (group 3), 1=отжата 2=нажата
-    this.load.image('btnhost1',   '/assets/stuff/btnhost1.png')
-    this.load.image('btnhost2',   '/assets/stuff/btnhost2.png')
-    this.load.image('btnplayer1', '/assets/stuff/btnplayer1.png')
-    this.load.image('btnplayer2', '/assets/stuff/btnplayer2.png')
+    this.load.image('btnhost1',   'assets/stuff/btnhost1.png')
+    this.load.image('btnhost2',   'assets/stuff/btnhost2.png')
+    this.load.image('btnplayer1', 'assets/stuff/btnplayer1.png')
+    this.load.image('btnplayer2', 'assets/stuff/btnplayer2.png')
 
     // Tilesets из level1/tileset/
-    const TS = p => `/levels/level1/tileset/${p}`
+    const TS = p => `levels/level1/tileset/${p}`
     this.load.image('tilemap_packed',            TS('tilemap_packed.png'))
     this.load.image('tilemap-backgrounds_packed',TS('tilemap-backgrounds_packed.png'))
     for (let i = 1; i <= 9; i++) {
@@ -89,64 +89,64 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image('ts-fonar',             TS('Фонарь.png'))
     this.load.image('ts-dver1',             TS('дверь1.png'))
     this.load.image('ts-dver2',             TS('дверь2.png'))
-    this.load.image('bg-tile', '/assets/bg-tile.png')
+    this.load.image('bg-tile', 'assets/bg-tile.png')
     // Интерактивные объекты
-    this.load.image('stuff-orb', '/assets/stuff/orb.png')
+    this.load.image('stuff-orb', 'assets/stuff/orb.png')
 
     // Звук лампы (положи файлы в public/assets/audio/). loaderror тихий — пока файлов
     // нет, просто не создастся звук (GameScene проверяет cache.audio.exists).
     // lamp-hum — зацикленное гудение; lamp-click — щелчок на каждый миг.
-    this.load.audio('lamp-hum',   '/assets/audio/lamp-hum.mp3')
-    this.load.audio('lamp-click', '/assets/audio/lamp-click.mp3')
-    this.load.audio('lamp-boom',  '/assets/audio/lamp-boom.mp3')
-    this.load.audio('rain-amb',   '/assets/audio/rain-01.mp3')
+    this.load.audio('lamp-hum',   'assets/audio/lamp-hum.mp3')
+    this.load.audio('lamp-click', 'assets/audio/lamp-click.mp3')
+    this.load.audio('lamp-boom',  'assets/audio/lamp-boom.mp3')
+    this.load.audio('rain-amb',   'assets/audio/rain-01.mp3')
 
     // Шаги: 10 файлов footstep00..09, проигрываются по кругу при ходьбе.
     for (let i = 0; i < 10; i++) {
       const n = String(i).padStart(2, '0')
-      this.load.audio(`footstep${n}`, `/assets/audio/footstep${n}.ogg`)
+      this.load.audio(`footstep${n}`, `assets/audio/footstep${n}.ogg`)
     }
 
     // Удар (анимация атаки при активации) + дверь открыть/закрыть.
-    this.load.audio('knife-slice', '/assets/audio/knifeSlice.ogg')
-    this.load.audio('door-open',   '/assets/audio/doorOpen_1.ogg')
-    this.load.audio('door-close',  '/assets/audio/doorClose_1.ogg')
+    this.load.audio('knife-slice', 'assets/audio/knifeSlice.ogg')
+    this.load.audio('door-open',   'assets/audio/doorOpen_1.ogg')
+    this.load.audio('door-close',  'assets/audio/doorClose_1.ogg')
 
     // Кнопка-рычаг: switch_007 — наступили, switch_006 — сошли.
-    this.load.audio('switch-on',  '/assets/audio/switch_007.ogg')
-    this.load.audio('switch-off', '/assets/audio/switch_006.ogg')
+    this.load.audio('switch-on',  'assets/audio/switch_007.ogg')
+    this.load.audio('switch-off', 'assets/audio/switch_006.ogg')
 
     // Движение игрока + обрыв провода.
-    this.load.audio('dash',     '/assets/audio/dash.wav')
-    this.load.audio('jump',     '/assets/audio/Jump.wav')
-    this.load.audio('jumpland', '/assets/audio/jumpland.wav')
-    this.load.audio('rope',     '/assets/audio/rope.wav')
-    this.load.audio('hit',      '/assets/audio/Hit.wav') // удар/смерть (шипы)
+    this.load.audio('dash',     'assets/audio/dash.wav')
+    this.load.audio('jump',     'assets/audio/Jump.wav')
+    this.load.audio('jumpland', 'assets/audio/jumpland.wav')
+    this.load.audio('rope',     'assets/audio/rope.wav')
+    this.load.audio('hit',      'assets/audio/Hit.wav') // удар/смерть (шипы)
 
     // Получение способности (оверлей «Открыто»): collect1 — на текст, collect2 — на подсказку.
-    this.load.audio('collect1', '/assets/audio/collect1.wav')
-    this.load.audio('collect2', '/assets/audio/collect2.wav')
-    this.load.audio('scroll',   '/assets/audio/Scroll.mp3') // прокрутка букв (флип-табло)
-    this.load.audio('revive',   '/assets/audio/revive.mp3') // воскрешение: аура + текст
+    this.load.audio('collect1', 'assets/audio/collect1.wav')
+    this.load.audio('collect2', 'assets/audio/collect2.wav')
+    this.load.audio('scroll',   'assets/audio/Scroll.mp3') // прокрутка букв (флип-табло)
+    this.load.audio('revive',   'assets/audio/revive.mp3') // воскрешение: аура + текст
 
     // ── Player spritesheets 512×512, кадр 64×64 (8 cols × 8 rows) ────────────
-    this.load.spritesheet('blue-knight',   '/assets/playerblue/blueknight.png',    { frameWidth: 64, frameHeight: 64 })
-    this.load.spritesheet('orange-knight', '/assets/playerorange/orangeknight.png', { frameWidth: 64, frameHeight: 64 })
+    this.load.spritesheet('blue-knight',   'assets/playerblue/blueknight.png',    { frameWidth: 64, frameHeight: 64 })
+    this.load.spritesheet('orange-knight', 'assets/playerorange/orangeknight.png', { frameWidth: 64, frameHeight: 64 })
 
     // Parallax backdrop layers — real pixel-art PNGs go in /public/assets/parallax/
     // loaderror fires silently, so listing here is safe even if files don't exist yet.
     // When the file IS present, it overrides the generated placeholder below.
-    this.load.image('px-sky',         '/assets/parallax/px-sky.png')
+    this.load.image('px-sky',         'assets/parallax/px-sky.png')
     // [diffuse, normal] → Phaser привяжет normal map к текстуре (texture.dataSource).
     // Light2D освещает поверхность с учётом рельефа нормалей.
-    this.load.image('px-mtn',         ['/assets/parallax/px-mtn.png',         '/assets/parallax/px-mtn_n.png'])
-    this.load.image('px-clouds-far',  ['/assets/parallax/px-clouds-far.png',  '/assets/parallax/px-clouds-far_n.png'])
-    this.load.image('px-clouds-near', ['/assets/parallax/px-clouds-near.png', '/assets/parallax/px-clouds-near_n.png'])
-    this.load.image('px-clouds-btm',  ['/assets/parallax/px-clouds_btm.png',  '/assets/parallax/px-clouds_btm_n.png'])
+    this.load.image('px-mtn',         ['assets/parallax/px-mtn.png',         'assets/parallax/px-mtn_n.png'])
+    this.load.image('px-clouds-far',  ['assets/parallax/px-clouds-far.png',  'assets/parallax/px-clouds-far_n.png'])
+    this.load.image('px-clouds-near', ['assets/parallax/px-clouds-near.png', 'assets/parallax/px-clouds-near_n.png'])
+    this.load.image('px-clouds-btm',  ['assets/parallax/px-clouds_btm.png',  'assets/parallax/px-clouds_btm_n.png'])
 
     // Level 1 parallax — 13 слоёв из /assets/parallax/level1/ (каждый 576×324)
     // 1 фон, 2 гора, 3-7 здания, 8-13 облака. Файлы названы просто "1.png".."13.png".
-    const L1 = name => `/assets/parallax/level1/${name}.png`
+    const L1 = name => `assets/parallax/level1/${name}.png`
     for (let i = 1; i <= 13; i++) {
       this.load.image(`px-${i}`, L1(`${i}`))
     }
