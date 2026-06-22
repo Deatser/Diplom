@@ -67,9 +67,10 @@ function bindUiSounds() {
 	)
 }
 
-// Hollow Knight-style: курсор скрыт в геймплее, виден в меню/паузе/настройках/смерти
-export function setCursorHidden(hidden) {
-  document.body.classList.toggle('cursor-hidden', hidden)
+// Курсор всегда видим (по просьбе игрока — прятать в геймплее было неудобно).
+// Оставляем сигнатуру, чтобы не трогать вызовы: всегда снимаем класс скрытия.
+export function setCursorHidden(_hidden) {
+  document.body.classList.remove('cursor-hidden')
 }
 
 export function showScreen(name, data = {}) {

@@ -43,6 +43,8 @@ class NetworkClient {
     this.socket.on('game:playerDied',   () => { console.log('[nc] playerDied');   this._emit('playerDied') })
     this.socket.on('game:deathRestart', () => { console.log('[nc] deathRestart'); this._emit('deathRestart') })
     this.socket.on('game:revive',       () => { console.log('[nc] revive');       this._emit('revive') })
+    this.socket.on('game:reviveAd',       () => this._emit('reviveAd'))
+    this.socket.on('game:reviveDeclined', () => this._emit('reviveDeclined'))
     this.socket.on('game:orbCollected', () => this._emit('orbCollected'))
     this.socket.on('game:abilityClose', () => this._emit('abilityClose'))
     this.socket.on('game:lampLever',    () => this._emit('lampLever'))
@@ -74,6 +76,8 @@ class NetworkClient {
   playerDied()         { if (this.roomId) this.socket?.emit('game:playerDied',    { roomId: this.roomId }) }
   deathRestart()       { if (this.roomId) this.socket?.emit('game:deathRestart',  { roomId: this.roomId }) }
   revive()             { if (this.roomId) this.socket?.emit('game:revive',        { roomId: this.roomId }) }
+  reviveAd()           { if (this.roomId) this.socket?.emit('game:reviveAd',      { roomId: this.roomId }) }
+  reviveDeclined()     { if (this.roomId) this.socket?.emit('game:reviveDeclined',{ roomId: this.roomId }) }
   orbCollected()       { if (this.roomId) this.socket?.emit('game:orbCollected',  { roomId: this.roomId }) }
   abilityClose()       { if (this.roomId) this.socket?.emit('game:abilityClose',  { roomId: this.roomId }) }
   lampLever()          { if (this.roomId) this.socket?.emit('game:lampLever',      { roomId: this.roomId }) }

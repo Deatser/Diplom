@@ -19,7 +19,7 @@ import MusicManager from '../../systems/MusicManager.js'
 import Transition from '../../systems/Transition.js'
 import { i18n } from '../../utils/i18n.js'
 import { MAX_PLAYABLE_LEVEL } from '../../utils/levels.js'
-import { showRewardedAd } from '../../utils/yandex.js'
+import { showRewardedAd, showFullscreenAd, gameplayStart, gameplayStop } from '../../utils/yandex.js'
 
 // Фоновая музыка по уровням (HTML5 Audio, см. MusicManager). Нет записи → тишина.
 const LEVEL_MUSIC = {
@@ -182,6 +182,17 @@ export class GameScene extends Phaser.Scene {
 		this._abilityOverlayEl = null // DOM оверлей получения способности
 		this._inputLocked = false // true → updateLocal пропускается (кинематик)
 		this._dying = false // true → анимация смерти / экран гибели
+		// Флаги координации одновременной смерти (оба умерли почти разом). _dying
+		// общий для «я мёртв» и «я заморожен, т.к. партнёр мёртв» — поэтому отдельно:
+		this._selfDead = false       // я сам погиб (прошёл свой оффер «Второй шанс»)
+		this._partnerDead = false    // партнёр погиб (пришёл playerDied)
+		this._selfDeclined = false   // я отказался от рекламы
+		this._partnerDeclined = false// партнёр отказался
+		this._partnerRevived = false // партнёр воскрес через рекламу
+		this._bothDeadStatusEl = null
+		this._bothDeadCounterEl = null
+		this._dashHintPos = null // точка dashhint из Tiled (подсказка деша при касании)
+		this._tutDashEl = null   // DOM-подсказка «{клавиша} Рывок»
 		this._deathZones = [] // зоны смерти из Tiled
 		this._deathOverlayEl = null // DOM оверлей "Вы погибли"
 		this._reviveOverlayEl = null // DOM оверлей «Второй шанс» / реклама (в #hud-overlay)
@@ -589,6 +600,7 @@ export class GameScene extends Phaser.Scene {
 		this._netUnsub.push(
 			networkClient.on('game:exit', () => {
 				console.log('[GameScene] Partner exited — forcing exit')
+				this._clearAutoRestart() // партнёр вышел во время авто-перезапуска
 				this._closeAbilityOverlay() // партнёр вышел в меню → закрыть «Открыто:» и у нас
 				// Force exit regardless of _exiting state (e.g. partner left from level-complete screen)
 				this._netUnsub.forEach(u => u())
@@ -621,7 +633,9 @@ export class GameScene extends Phaser.Scene {
 		this._netUnsub.push(
 			networkClient.on('playerDied', () => {
 				console.log('[GameScene] Partner died')
-				if (!this._dying && !this._exiting) {
+				this._partnerDead = true // фиксируем всегда — даже если я тоже мёртв
+				if (this._selfDead || this._exiting) return // оба мертвы → свой оффер уже показан
+				if (!this._dying) {
 					this._dying = true
 					this._inputLocked = true
 					this._showPartnerDeathScreen()
@@ -632,12 +646,17 @@ export class GameScene extends Phaser.Scene {
 		this._netUnsub.push(
 			networkClient.on('deathRestart', () => {
 				console.log('[GameScene] deathRestart received — restarting')
+				this._clearAutoRestart() // хост перезапустил — гасим свой визуальный таймер
 				this._deathOverlayEl?.remove()
 				this._deathOverlayEl = null
 				this._netUnsub.forEach(u => u())
 				this._netUnsub = []
 				window.__l2sFromDeath = true // респаун → туториал-подсказки не повторять
-				this.scene.restart({ levelId: this.levelId, role: this.role })
+				// Отложенный рестарт — иначе scene.restart из сокет-колбэка (вне лупа)
+				// гонится с shutdown и DOM-подсказки «залипают» (как в game:start).
+				this.time.delayedCall(50, () =>
+					this.scene.restart({ levelId: this.levelId, role: this.role }),
+				)
 			}),
 		)
 
@@ -645,7 +664,18 @@ export class GameScene extends Phaser.Scene {
 		// продолжаем с того же места (мы не двигались, пока были заморожены).
 		this._netUnsub.push(
 			networkClient.on('revive', () => {
-				console.log('[GameScene] Partner revived — resuming')
+				console.log('[GameScene] Partner revived')
+				this._clearAutoRestart() // на случай если таймер уже шёл
+				this._partnerRevived = true
+				if (this._selfDead) {
+					// Оба умерли, партнёр воскрес через рекламу → честно воскрешаем и
+					// нас (даже если мы отказались/ждём/смотрим свой ролик). Без повтора
+					// вещания revive — _respawnLocal только локально.
+					this._respawnLocal()
+					this._spawnReviveHalo(this.remotePlayer) // аура и над партнёром
+					return
+				}
+				// Я был замороженный выживший → просто продолжаю с места.
 				this._deathOverlayEl?.remove()
 				this._deathOverlayEl = null
 				this._reviveOverlayEl?.remove()
@@ -654,6 +684,37 @@ export class GameScene extends Phaser.Scene {
 				this._inputLocked = false
 				setCursorHidden(true)
 				this._spawnReviveHalo(this.remotePlayer) // аура + текст над воскресшим партнёром
+			}),
+		)
+
+		// Партнёр нажал «смотреть рекламу» → меняем подпись на «смотрит рекламу».
+		// Авто-перезапуск НЕ стартует (стартует только при отказе).
+		this._netUnsub.push(
+			networkClient.on('reviveAd', () => {
+				// Оба мертвы: партнёр смотрит рекламу → обновляем наш статус ожидания.
+				if (this._selfDead) {
+					if (this._bothDeadStatusEl)
+						this._bothDeadStatusEl.textContent = i18n.t('game.revive_watching')
+					return
+				}
+				if (this._partnerSubEl) this._partnerSubEl.textContent = i18n.t('game.revive_watching')
+			}),
+		)
+
+		// Партнёр отказался от рекламы → у выжившего прячем статус-подпись и плавно
+		// показываем авто-перезапуск; хосту разблокируем кнопку «Заново».
+		this._netUnsub.push(
+			networkClient.on('reviveDeclined', () => {
+				// Оба мертвы: фиксируем отказ партнёра и пересматриваем исход.
+				if (this._selfDead) {
+					this._partnerDeclined = true
+					this._resolveBothDead()
+					return
+				}
+				if (this._partnerSubEl) this._partnerSubEl.style.display = 'none'
+				if (this._partnerRestartBtn) this._partnerRestartBtn.disabled = false
+				if (this._partnerCounterEl)
+					this._startAutoRestart(this._partnerCounterEl, this.role === 'host')
 			}),
 		)
 
@@ -909,6 +970,7 @@ export class GameScene extends Phaser.Scene {
 		const b = this.physics.world.bounds
 		this.physics.world.setBounds(0, b.y, this._mapRight ?? b.width, b.height)
 		this._showTutMove() // управление получено впервые → подсказка WASD
+		gameplayStart() // Яндекс: уровень стал играбельным → активный геймплей
 	}
 
 	// Каждый кадр на входе: дошёл до своей точки покоя → стоп + вернуть управление.
@@ -927,13 +989,24 @@ export class GameScene extends Phaser.Scene {
 	//   • ЛКМ + «Взаимодействовать» — при подходе к интерактивному объекту,
 	//     гаснет до конца сессии после первого успешного взаимодействия.
 	_initTutorialHints() {
+		// БЕЗУСЛОВНАЯ подчистка от прошлой жизни — до любых ранних return. Если по
+		// какой-то причине (гонка рестарта, смерть до движения) подсказка не убралась
+		// в shutdown, гарантированно сносим её на входе в ЛЮБОЙ уровень. Иначе WASD-
+		// подсказка «залипает» и тянется на следующие уровни. Класс .tut-hint общий
+		// для подсказок движения и взаимодействия — снимаем обе.
+		document.querySelectorAll('#hud-prompts .tut-hint').forEach(el => el.remove())
 		this._tutMoveEl = null
 		this._tutInteractEl = null
+		this._tutDashEl = null
 		this._tutInteractZones = 0 // счётчик зон рядом (орб/рычаг/тест-орбы)
 		this._botTutPressed = null // аккумулятор «бот подвигался» (см. _checkBotTutMove)
 		const fromDeath = window.__l2sFromDeath
 		window.__l2sFromDeath = false
 		if (Number(this.levelId) !== 1 || fromDeath) return
+		// Свежий заход на уровень 1 (не после смерти) → разрешаем подсказку рывка
+		// показаться один раз. На death-restart этот блок пропускается (флаг сохранён),
+		// как и WASD/взаимодействие — повторно не навязываем.
+		window.__l2sDashHintShown = false
 		// Подсказки видны и боту: гасит их его собственное движение (_checkBotTutMove)
 		// и его клики (botClick → _completeTutInteract), как у живого игрока.
 		const hp = document.getElementById('hud-prompts')
@@ -1024,6 +1097,7 @@ export class GameScene extends Phaser.Scene {
 		const bottom = `${window.innerHeight - r.bottom + r.height * 0.08}px`
 		if (this._tutMoveEl) this._tutMoveEl.style.bottom = bottom
 		if (this._tutInteractEl) this._tutInteractEl.style.bottom = bottom
+		if (this._tutDashEl) this._tutDashEl.style.bottom = bottom
 	}
 
 	// Плавное появление WASD-подсказки — в момент, когда игрок впервые получает управление.
@@ -1064,6 +1138,47 @@ export class GameScene extends Phaser.Scene {
 		if (!this._tutInteractEl) return
 		const el = this._tutInteractEl
 		this._tutInteractEl = null
+		el.classList.remove('visible')
+		setTimeout(() => el.remove(), 1000)
+	}
+
+	// Подсказка рывка «{клавиша} Рывок» внизу по центру (как «Перемещение»/
+	// «Взаимодействовать»). Появляется при касании dashhint с разблокированным дешем,
+	// гаснет по первому нажатию клавиши деша.
+	_showTutDash() {
+		if (this._tutDashEl) return
+		const hp = document.getElementById('hud-prompts')
+		if (!hp) return
+		const dashCode = (SaveSystem.getSettings().keybindings || {}).dash || 'ShiftLeft'
+		const el = document.createElement('div')
+		el.className = 'tut-hint'
+		el.innerHTML = `
+			<span class="tut-key tut-key-wide">${keyCodeToLabel(dashCode)}</span>
+			<span class="tut-label">${i18n.t('game.tut_dash')}</span>
+		`
+		hp.appendChild(el)
+		this._tutDashEl = el
+		this._placeTutHints()
+		requestAnimationFrame(() => el.classList.add('visible'))
+		// Гаснет по первому нажатию клавиши деша (как WASD — по освоении управления).
+		const onKey = e => {
+			if (this._inputLocked) return
+			if (e.code !== dashCode) return
+			this.input.keyboard.off('keydown', onKey)
+			this._dismissTutDash()
+		}
+		this._onTutDashKey = onKey
+		this.input.keyboard.on('keydown', onKey)
+	}
+
+	_dismissTutDash() {
+		if (!this._tutDashEl) return
+		const el = this._tutDashEl
+		this._tutDashEl = null
+		if (this._onTutDashKey) {
+			this.input.keyboard.off('keydown', this._onTutDashKey)
+			this._onTutDashKey = null
+		}
 		el.classList.remove('visible')
 		setTimeout(() => el.remove(), 1000)
 	}
@@ -1191,6 +1306,26 @@ export class GameScene extends Phaser.Scene {
 				if (this._lampLeverPromptEl)
 					_showHkPrompt(this._lampLeverPromptEl, nearby)
 				this._tutInteractNear(nearby)
+			}
+		}
+
+		// Подсказка рывка: касание точки dashhint, когда у МЕСТНОГО игрока уже
+		// разблокирован деш → показать один раз (только тому, кто коснулся). Без деша
+		// проход сквозь точку ничего не делает — можно проходить сколько угодно.
+		if (
+			this._dashHintPos &&
+			!window.__l2sDashHintShown &&
+			this.localPlayer.hasAbility('dash')
+		) {
+			const dist = Phaser.Math.Distance.Between(
+				this.localPlayer.x,
+				this.localPlayer.y,
+				this._dashHintPos.x,
+				this._dashHintPos.y,
+			)
+			if (dist < 32) {
+				window.__l2sDashHintShown = true
+				this._showTutDash()
 			}
 		}
 
@@ -2199,6 +2334,8 @@ export class GameScene extends Phaser.Scene {
 
 	// Экран чёрный: плавно глушим музыку и звуки, затем грузим следующий уровень.
 	_levelEndGoBlack() {
+		gameplayStop()      // Яндекс: уровень пройден → активный геймплей завершён
+		showFullscreenAd()  // межстраничная реклама на переходе (SDK сам троттлит ≤1/60с)
 		MusicManager.stop({ fadeMs: 800 }) // музыка плавно затухает
 		this._ambDuckTween?.stop() // не конфликтуем с duck оверлея способности
 		const a = { v: this._ambDuck }
@@ -2972,6 +3109,11 @@ export class GameScene extends Phaser.Scene {
 				case 'exit':
 					this._makeExitZone(x, y)
 					break
+				case 'dashhint':
+					// Точка-триггер подсказки рывка. Показ — в update() при касании,
+					// если у местного игрока уже разблокирован деш (и один раз за заход).
+					this._dashHintPos = { x, y }
+					break
 				case 'orb': {
 					// Invisible physics body для overlap-детекции
 					this.orb = this.physics.add
@@ -3306,6 +3448,7 @@ export class GameScene extends Phaser.Scene {
 	_triggerDeath() {
 		if (this._dying || this._exiting || this._inputLocked) return
 		this._dying = true
+		this._selfDead = true // я погиб сам (в отличие от заморозки из-за смерти партнёра)
 		this._inputLocked = true
 
 		this.localPlayer.body.setVelocity(0, 0)
@@ -3371,6 +3514,7 @@ export class GameScene extends Phaser.Scene {
 			if (this._reviveTimer) { clearTimeout(this._reviveTimer); this._reviveTimer = null }
 			el.remove()
 			this._reviveOverlayEl = null
+			networkClient.reviveAd() // партнёру: «игрок смотрит рекламу для возрождения»
 			this._showAdOverlay()
 		})
 
@@ -3403,6 +3547,7 @@ export class GameScene extends Phaser.Scene {
 			onReward: () => { rewarded = true },
 			onClose: (ok) => {
 				this.sound.mute = wasMuted
+				if (!this._dying) return // нас уже воскресил партнёр (оба умерли) — ничего не делаем
 				if (rewarded || ok) this._doRevive()
 				else this._showDeathScreen()
 			},
@@ -3413,8 +3558,19 @@ export class GameScene extends Phaser.Scene {
 	// безопасную землю (без deathlayer), партнёр продолжает с места.
 	_doRevive() {
 		if (!this._dying) return
+		this._respawnLocal()
+		networkClient.revive() // партнёр снимает «погиб» и продолжает (или тоже воскресает)
+	}
+
+	// Локальный респаун без сетевого вещания: вернуть игрока на последнюю безопасную
+	// землю, снять смерть, почистить оверлеи/таймеры/флаги. Используется и при своём
+	// воскрешении (_doRevive), и когда нас «честно» воскрешает партнёр (оба умерли).
+	_respawnLocal() {
+		this._clearAutoRestart()
 		this._reviveOverlayEl?.remove()
 		this._reviveOverlayEl = null
+		this._deathOverlayEl?.remove()
+		this._deathOverlayEl = null
 		if (this._reviveTimer) { clearTimeout(this._reviveTimer); this._reviveTimer = null }
 
 		const pos = this._lastSafePos || { x: this.localPlayer.x, y: this.localPlayer.y }
@@ -3427,9 +3583,64 @@ export class GameScene extends Phaser.Scene {
 
 		this._dying = false
 		this._inputLocked = false
+		this._resetDeathFlags()
 		setCursorHidden(true)
 		this._spawnReviveHalo(this.localPlayer) // аура + текст + звук над воскресшим
-		networkClient.revive() // партнёр снимает «погиб» и продолжает
+	}
+
+	_resetDeathFlags() {
+		this._selfDead = false
+		this._partnerDead = false
+		this._selfDeclined = false
+		this._partnerDeclined = false
+		this._partnerRevived = false
+		this._bothDeadStatusEl = null
+		this._bothDeadCounterEl = null
+	}
+
+	// Экран при ОДНОВРЕМЕННОЙ смерти, когда я отказался от рекламы: «Вы погибли» +
+	// статус ожидания решения партнёра. Авто-перезапуск появится здесь же, только
+	// если партнёр тоже откажется (см. _resolveBothDead).
+	_showBothDeadScreen() {
+		const el = document.createElement('div')
+		el.className = 'game-fullscreen-overlay'
+		const title = document.createElement('div')
+		title.className = 'game-overlay-title'
+		title.textContent = i18n.t('game.you_died')
+		title.style.color = '#cc3333'
+		title.style.textShadow = '0 0 24px #cc3333'
+		el.appendChild(title)
+		const status = document.createElement('div')
+		status.className = 'game-overlay-subtitle'
+		status.style.color = 'rgba(255,255,255,0.6)'
+		status.textContent = i18n.t('game.waiting_partner_decision')
+		el.appendChild(status)
+		this._bothDeadStatusEl = status
+		const counter = document.createElement('div')
+		counter.className = 'auto-restart'
+		el.appendChild(counter)
+		this._bothDeadCounterEl = counter
+		document.getElementById('hud-overlay').appendChild(el)
+		this._deathOverlayEl = el
+	}
+
+	// Разрешение исхода одновременной смерти. Зовётся, когда меняется состояние
+	// (мой отказ / отказ партнёра / воскрешение партнёра). Правило игрока:
+	// любой просмотр рекламы → воскресают оба; оба отказались → авто-перезапуск.
+	_resolveBothDead() {
+		if (!this._selfDead) return
+		if (this._partnerRevived) {
+			this._respawnLocal() // партнёр воскрес → честно воскрешаем и себя
+			return
+		}
+		if (this._selfDeclined && this._partnerDeclined) {
+			// Оба отказались → общий 5с авто-перезапуск (авторитет — хост).
+			if (this._bothDeadStatusEl) this._bothDeadStatusEl.style.display = 'none'
+			if (this._bothDeadCounterEl)
+				this._startAutoRestart(this._bothDeadCounterEl, this.role === 'host')
+			return
+		}
+		// иначе — ждём решения партнёра (статус уже показан)
 	}
 
 	// Эффект воскрешения: мягкое плавное свечение вокруг персонажа (DOM radial-gradient,
@@ -3549,6 +3760,17 @@ export class GameScene extends Phaser.Scene {
 	_showDeathScreen() {
 		setCursorHidden(false)
 		this._closeAbilityOverlay() // убрать «Открыто:» если игрок не закрыл его до смерти
+		this._selfDeclined = true
+		// Отказ от рекламы → партнёру (он либо выживший-наблюдатель, либо тоже мёртв).
+		networkClient.reviveDeclined()
+		if (this._partnerDead) {
+			// Оба мертвы → НЕ перезапускаем сразу. Ждём решения партнёра: если он
+			// посмотрит рекламу — воскреснем оба (честно); если тоже откажется — общий
+			// авто-перезапуск. Разрешение в _resolveBothDead.
+			this._showBothDeadScreen()
+			this._resolveBothDead()
+			return
+		}
 		const el = document.createElement('div')
 		el.className = 'game-fullscreen-overlay'
 
@@ -3559,26 +3781,25 @@ export class GameScene extends Phaser.Scene {
 		title.style.textShadow = '0 0 24px #cc3333'
 		el.appendChild(title)
 
+		// Авто-перезапуск (5с, цифра + полоска) — у обоих игроков. Авторитет таймера —
+		// хост: на 0 он шлёт deathRestart и перезапускает; гость ждёт это событие.
+		const counter = document.createElement('div')
+		counter.className = 'auto-restart'
+		el.appendChild(counter)
+
 		if (this.role === 'host') {
 			const restartBtn = document.createElement('button')
 			restartBtn.className = 'game-btn game-btn-primary'
 			restartBtn.style.color = '#ff6666'
 			restartBtn.style.borderColor = 'rgba(255,80,80,0.45)'
 			restartBtn.textContent = i18n.t('game.restart')
-			restartBtn.addEventListener('click', () => {
-				el.remove()
-				this._deathOverlayEl = null
-				networkClient.deathRestart()
-				this._netUnsub.forEach(u => u())
-				this._netUnsub = []
-				window.__l2sFromDeath = true // респаун → туториал-подсказки не повторять
-				this.scene.restart({ levelId: this.levelId, role: 'host' })
-			})
+			restartBtn.addEventListener('click', () => this._doDeathRestart())
 
 			const menuBtn = document.createElement('button')
 			menuBtn.className = 'game-btn'
 			menuBtn.textContent = i18n.t('game.exit_menu')
 			menuBtn.addEventListener('click', () => {
+				this._clearAutoRestart()
 				el.remove()
 				this._deathOverlayEl = null
 				networkClient.exitGame()
@@ -3590,16 +3811,71 @@ export class GameScene extends Phaser.Scene {
 
 			el.appendChild(restartBtn)
 			el.appendChild(menuBtn)
-		} else {
-			const waiting = document.createElement('div')
-			waiting.className = 'game-overlay-subtitle'
-			waiting.style.color = 'rgba(255,255,255,0.45)'
-			waiting.textContent = i18n.t('game.waiting_host')
-			el.appendChild(waiting)
 		}
 
 		document.getElementById('hud-overlay').appendChild(el)
 		this._deathOverlayEl = el
+		this._startAutoRestart(counter, this.role === 'host')
+	}
+
+	// Перезапуск уровня с начала (ручной кнопкой или авто-таймером). Зовётся только
+	// у хоста — он авторитет перезапуска; гость перезапускается по событию deathRestart.
+	_doDeathRestart() {
+		this._clearAutoRestart()
+		this._deathOverlayEl?.remove()
+		this._deathOverlayEl = null
+		networkClient.deathRestart()
+		this._netUnsub.forEach(u => u())
+		this._netUnsub = []
+		window.__l2sFromDeath = true // респаун → туториал-подсказки не повторять
+		// Отложенный рестарт (как в game:start / _advanceToNextLevel): scene.restart
+		// синхронно из клика/таймера/сокет-колбэка идёт ВНЕ игрового цикла → гонка,
+		// shutdown не успевает очистить DOM и подсказки «залипают». 50мс через часы
+		// сцены гарантируют, что рестарт пройдёт внутри лупа и DOM очистится.
+		this.time.delayedCall(50, () =>
+			this.scene.restart({ levelId: this.levelId, role: this.role }),
+		)
+	}
+
+	// Показывает и тикает авто-перезапуск (5с): убывающая полоска + цифра 5→0.
+	// isAuthority=true (хост) → на 0 запускает перезапуск; иначе только визуал.
+	_startAutoRestart(containerEl, isAuthority) {
+		this._clearAutoRestart() // не плодим таймеры
+		const SECONDS = 5
+		let remaining = SECONDS
+		containerEl.innerHTML =
+			'<div class="auto-restart-msg"></div>' +
+			'<div class="auto-restart-track"><div class="auto-restart-fill"></div></div>'
+		const msg = containerEl.querySelector('.auto-restart-msg')
+		const fill = containerEl.querySelector('.auto-restart-fill')
+		const render = () => { msg.textContent = i18n.t('game.auto_restart', { n: remaining }) }
+		render()
+		// Плавное появление + старт убывания полоски (reflow перед сменой ширины,
+		// иначе браузер схлопнет начальную и конечную ширину в один кадр).
+		requestAnimationFrame(() => {
+			containerEl.classList.add('show')
+			void containerEl.offsetWidth
+			fill.style.transition = `width ${SECONDS}s linear`
+			fill.style.width = '0%'
+		})
+		this._autoRestartInterval = setInterval(() => {
+			remaining -= 1
+			if (remaining <= 0) {
+				remaining = 0
+				render()
+				this._clearAutoRestart()
+				if (isAuthority) this._doDeathRestart()
+				return
+			}
+			render()
+		}, 1000)
+	}
+
+	_clearAutoRestart() {
+		if (this._autoRestartInterval) {
+			clearInterval(this._autoRestartInterval)
+			this._autoRestartInterval = null
+		}
 	}
 
 	_showPartnerDeathScreen() {
@@ -3615,25 +3891,35 @@ export class GameScene extends Phaser.Scene {
 		title.style.textShadow = '0 0 24px #cc3333'
 		el.appendChild(title)
 
+		// Подпись-статус: пока партнёр выбирает рекламу / смотрит её. На отказе она
+		// прячется, а вместо неё в counter появляется авто-перезапуск (см. сетевые
+		// обработчики reviveAd / reviveDeclined).
+		const sub = document.createElement('div')
+		sub.className = 'game-overlay-subtitle'
+		sub.style.color = 'rgba(255,255,255,0.6)'
+		sub.textContent = i18n.t('game.revive_deciding')
+		el.appendChild(sub)
+		this._partnerSubEl = sub
+
+		// Контейнер авто-перезапуска — пуст, пока партнёр не отказался от рекламы.
+		const counter = document.createElement('div')
+		counter.className = 'auto-restart'
+		el.appendChild(counter)
+		this._partnerCounterEl = counter
+
 		if (this.role === 'host') {
 			const restartBtn = document.createElement('button')
 			restartBtn.className = 'game-btn game-btn-primary'
 			restartBtn.style.color = '#ff6666'
 			restartBtn.style.borderColor = 'rgba(255,80,80,0.45)'
 			restartBtn.textContent = i18n.t('game.restart')
-			restartBtn.addEventListener('click', () => {
-				el.remove()
-				this._deathOverlayEl = null
-				networkClient.deathRestart()
-				this._netUnsub.forEach(u => u())
-				this._netUnsub = []
-				window.__l2sFromDeath = true // респаун → туториал-подсказки не повторять
-				this.scene.restart({ levelId: this.levelId, role: 'host' })
-			})
+			restartBtn.disabled = true // пока партнёр выбирает рекламу — перезапуск нельзя
+			restartBtn.addEventListener('click', () => this._doDeathRestart())
 			const menuBtn = document.createElement('button')
 			menuBtn.className = 'game-btn'
 			menuBtn.textContent = i18n.t('game.exit_menu')
 			menuBtn.addEventListener('click', () => {
+				this._clearAutoRestart()
 				el.remove()
 				this._deathOverlayEl = null
 				networkClient.exitGame()
@@ -3644,12 +3930,7 @@ export class GameScene extends Phaser.Scene {
 			})
 			el.appendChild(restartBtn)
 			el.appendChild(menuBtn)
-		} else {
-			const waiting = document.createElement('div')
-			waiting.className = 'game-overlay-subtitle'
-			waiting.style.color = 'rgba(255,255,255,0.45)'
-			waiting.textContent = i18n.t('game.waiting_host')
-			el.appendChild(waiting)
+			this._partnerRestartBtn = restartBtn
 		}
 
 		document.getElementById('hud-overlay').appendChild(el)
@@ -3659,6 +3940,8 @@ export class GameScene extends Phaser.Scene {
 	_requestExit() {
 		if (this._exiting) return
 		this._gamePaused = false
+		gameplayStop()      // Яндекс: уходим из геймплея в меню
+		showFullscreenAd()  // межстраничная реклама при выходе в меню (SDK троттлит)
 		this._closeAbilityOverlay() // выход в меню → не оставлять «Открыто:» висеть
 		console.log('[GameScene] ESC → exit')
 		networkClient.exitGame()
@@ -4558,8 +4841,9 @@ export class GameScene extends Phaser.Scene {
 
 	// Phaser lifecycle — called on scene stop/restart. Cleans up all DOM elements.
 	shutdown() {
-		// Таймер «второго шанса» не должен пережить сцену
+		// Таймеры «второго шанса» и авто-перезапуска не должны пережить сцену
 		if (this._reviveTimer) { clearTimeout(this._reviveTimer); this._reviveTimer = null }
+		this._clearAutoRestart()
 		// Явно удалить каждый отслеживаемый элемент
 		this._levelCompleteEl?.remove()
 		this._abilityOverlayEl?.remove()
@@ -4585,6 +4869,11 @@ export class GameScene extends Phaser.Scene {
 		this._levelCompleteEl = null
 		this._tutMoveEl = null // сами элементы удалены очисткой hud-prompts выше
 		this._tutInteractEl = null
+		this._tutDashEl = null
+		if (this._onTutDashKey) {
+			this.input?.keyboard?.off('keydown', this._onTutDashKey)
+			this._onTutDashKey = null
+		}
 		if (this._onTutResize) {
 			window.removeEventListener('resize', this._onTutResize)
 			this._onTutResize = null

@@ -7,6 +7,7 @@ import { networkClient } from '../network/NetworkClient.js'
 import Sfx from '../systems/Sfx.js'
 import Transition from '../systems/Transition.js'
 import { i18n } from '../utils/i18n.js'
+import { gameplayStart, gameplayStop } from '../utils/yandex.js'
 
 let _game = null
 let _pauseScene = null  // reference to active GameScene for exit button
@@ -26,6 +27,7 @@ export function togglePause(scene) {
     // Open pause: disable game input
     Sfx.play('slide') // звук открытия паузы
     if (_pauseScene) _pauseScene._gamePaused = true
+    gameplayStop() // Яндекс: пауза → активный геймплей приостановлен
     _openPause()
   } else {
     // Close pause: re-enable game input
@@ -54,7 +56,10 @@ function _openPause() {
 function _closePause(resumeGame = true) {
   document.getElementById('pause-menu').classList.add('hidden')
   if (resumeGame) setCursorHidden(true)
-  if (resumeGame && _pauseScene) _pauseScene._gamePaused = false
+  if (resumeGame && _pauseScene) {
+    _pauseScene._gamePaused = false
+    gameplayStart() // Яндекс: вышли из паузы → геймплей продолжается
+  }
 }
 
 function _showPauseExitConfirm() {
@@ -168,24 +173,29 @@ function _doStartGame(levelId, role) {
   })
 }
 
-// ── Заполнение экрана в оконном режиме на 16:9 мониторе ─────────────────────
-// Scale.FIT держит соотношение 320:180 (=16:9). В фуллскрине вьюпорт ровно
-// 16:9 → полос нет. В окне браузер съедает высоту хромом → вьюпорт шире 16:9 →
-// FIT даёт полосы по краям. На 16:9 мониторе вне фуллскрина вешаем класс
-// .aspect-fill (CSS растягивает канвас на весь вьюпорт — лёгкое растяжение
-// вместо полос). На не-16:9 мониторе (напр. 9:16) и в фуллскрине — не трогаем.
+// ── Заполнение экрана: растянуть вместо полос, если вьюпорт ≈16:9 ────────────
+// Scale.FIT держит 320:180 (=16:9) и при несовпадении даёт синие полосы. Угадать
+// разрешение игрока нельзя (разные мониторы; на Яндексе ещё их плашка сверху,
+// блок рекламы справа, хром браузера, таскбар) → реальная область игры почти
+// никогда не ровно 16:9. Поэтому смотрим на ФАКТИЧЕСКИЙ вьюпорт игры
+// (window.innerWidth/innerHeight — внутри iframe Яндекса это и есть выданная нам
+// область, без их плашки/рекламы), а не на физический монитор.
+//   • вьюпорт близко к 16:9 (в пределах TOL) → класс .aspect-fill: CSS тянет
+//     канвас на всю область — полос нет ни по ширине, ни по высоте (растяжение
+//     мягкое, т.к. соотношение почти совпадает; покрывает и lowres-фреймбуфер).
+//   • вьюпорт далеко от 16:9 (портрет 9:16 и т.п.) → класс не вешаем: остаётся
+//     честный FIT 16:9, сверху/снизу полосы (растягивать сильно — испортить арт).
+// TOL=0.30 → диапазон ~4:3 … 21:9 тянется, портрет — letterbox. Один параметр,
+// крутится по вкусу: больше — агрессивнее тянет, меньше — раньше уходит в полосы.
 function _setupAspectFill(game) {
   const cont = document.getElementById('game-container')
   if (!cont) return
-  const is169 = () => {
-    const r = window.screen.width / window.screen.height
-    return Math.abs(r - 16 / 9) < 0.06
-  }
-  const isFullscreen = () =>
-    !!(document.fullscreenElement || document.webkitFullscreenElement)
+  const TARGET = 16 / 9
+  const TOL = 0.30
   const apply = () => {
-    if (is169() && !isFullscreen()) cont.classList.add('aspect-fill')
-    else cont.classList.remove('aspect-fill')
+    const r = window.innerWidth / window.innerHeight
+    const within = Math.abs(r - TARGET) / TARGET <= TOL
+    cont.classList.toggle('aspect-fill', within)
   }
   apply()
   window.addEventListener('resize', apply)

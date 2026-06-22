@@ -171,6 +171,16 @@ io.on('connection', socket => {
     socket.to(roomId).emit('game:revive')
   })
 
+  // Умерший нажал «смотреть рекламу» → партнёру показать «игрок смотрит рекламу».
+  socket.on('game:reviveAd', ({ roomId }) => {
+    socket.to(roomId).emit('game:reviveAd')
+  })
+
+  // Умерший отказался от рекламы → у обоих стартует авто-перезапуск (5с).
+  socket.on('game:reviveDeclined', ({ roomId }) => {
+    socket.to(roomId).emit('game:reviveDeclined')
+  })
+
   socket.on('game:orbCollected', ({ roomId }) => {
     socket.to(roomId).emit('game:orbCollected')
   })

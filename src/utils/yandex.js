@@ -52,8 +52,23 @@ export function showRewardedAd({ onReward, onClose } = {}) {
   })
 }
 
-// Полноэкранная реклама (между уровнями). По правилам Яндекса — не чаще раза
-// в ~60с; SDK сам не покажет слишком часто. callbacks опциональны.
+// Полноэкранная реклама (между уровнями / при выходе в меню). По правилам Яндекса —
+// не чаще раза в ~60с; SDK сам троттлит и не покажет слишком часто. Вне Яндекса —
+// тихо ничего не делает. callbacks опциональны (onOpen/onClose/onError).
 export function showFullscreenAd(callbacks = {}) {
-  ysdk?.adv?.showFullscreenAdv({ callbacks })
+  if (!ysdk) return
+  try { ysdk.adv.showFullscreenAdv({ callbacks }) } catch {}
+}
+
+// ── GameplayAPI: сообщаем платформе, когда идёт активный геймплей ─────────────
+// Требование модерации Яндекса: пока игрок реально играет — start(); когда уходит
+// в паузу/меню/между уровнями — stop(). Это даёт платформе ставить рекламу/звук
+// на паузу при потере фокуса вкладки и не показывать межстраничную в разгар игры.
+// Вне Яндекса — пустышки.
+export function gameplayStart() {
+  try { ysdk?.features?.GameplayAPI?.start() } catch {}
+}
+
+export function gameplayStop() {
+  try { ysdk?.features?.GameplayAPI?.stop() } catch {}
 }

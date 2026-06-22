@@ -20,6 +20,12 @@
 	--font: 'Cinzel', 'Forum', serif;
 	/* Пиксельный шрифт для интеракшн-текстов и finaltext (см. @font-face выше). */
 	--font-pixel: 'Epilepsy Sans', monospace;
+	/* Единица пропорционального масштаба. Равна 1vw на экране 16:9, но на
+	   нестандартных пропорциях ограничена высотой (1vw=1.7778vh при 16:9) → текст
+	   и UI масштабируются вместе с вписанной 16:9-областью игры, а не раздуваются
+	   по ширине на низких/широких окнах и не мельчают в портрете. Размеры в коде
+	   задаются как calc(N * var(--u)), где N — прежнее число «vw». */
+	--u: min(1vw, 1.7778vh);
 }
 
 * {
@@ -59,10 +65,10 @@ body.cursor-hidden * {
 #game-container.hidden {
 	display: none !important;
 }
-/* Оконный режим на 16:9 мониторе: растягиваем канвас на весь вьюпорт, чтобы
-   не было полос от Scale.FIT (хром браузера делает окно шире 16:9). В
-   фуллскрине (вьюпорт уже 16:9) и на не-16:9 мониторах класс не вешается —
-   остаётся честный FIT. Покрывает и Phaser-канвас, и lowres-фреймбуфер. */
+/* Класс вешается из _setupAspectFill, когда вьюпорт игры ≈16:9 (в пределах
+   допуска): растягиваем канвас на весь вьюпорт, чтобы не было синих полос от
+   Scale.FIT. Когда вьюпорт далеко от 16:9 (портрет) — класс снят, остаётся
+   честный FIT 16:9 с полосами. Покрывает и Phaser-канвас, и lowres-фреймбуфер. */
 #game-container.aspect-fill > canvas {
 	display: block !important;
 	position: fixed !important; /* якорим к вьюпорту, а не к контейнеру */
@@ -185,7 +191,7 @@ body.cursor-hidden * {
 	font-family: var(--font-pixel);
 	/* vw, а не rem → одинаковая доля экрана на любом разрешении (как .hk-text 2.25vw).
 	   Раньше 1.5rem (фикс. px) → на больших мониторах текст мельче по доле. */
-	font-size: 2.25vw;
+	font-size: calc(2.25 * var(--u));
 }
 /* Цветные слова: «Хост(а)» — синий рыцарь, «Гость/Гостя» — оранжевый рыцарь. */
 .fc-host {
@@ -247,7 +253,7 @@ body.cursor-hidden * {
 	display: block;
 	text-align: center;
 	font-family: var(--font-pixel); /* пиксельный шрифт для «Подобрать»/«Осмотреть» */
-	font-size: 2.25vw; /* в 1.5 раза больше (было 1.5vw) */
+	font-size: calc(2.25 * var(--u)); /* в 1.5 раза больше (было 1.5vw) */
 	letter-spacing: 0.06em;
 	white-space: nowrap;
 	animation: hkTextIn 0.28s 0.07s ease-out both;
@@ -371,9 +377,16 @@ body.cursor-hidden * {
 		0 0 10px rgba(215, 222, 234, 0.18),
 		inset 0 0 8px rgba(215, 222, 234, 0.08);
 	font-family: var(--font-pixel);
-	font-size: 1.7vw;
+	font-size: calc(1.7 * var(--u));
 	color: #d7deea;
 	text-shadow: 0 0 8px rgba(215, 222, 234, 0.4);
+}
+/* Широкий ключ — для многобуквенных меток (Shift / Ctrl / Space) в подсказке рывка,
+   чтобы текст не обрезался квадратом фиксированной ширины. */
+.tut-key-wide {
+	width: auto;
+	min-width: 2.7vw;
+	padding: 0 0.7vw;
 }
 /* Пробел — обычный квадрат со значком «⎵» (нижняя скоба, рисуем рамкой CSS) */
 .tut-space-glyph {
@@ -395,7 +408,7 @@ body.cursor-hidden * {
 }
 .tut-label {
 	font-family: var(--font-pixel);
-	font-size: 2.25vw;
+	font-size: calc(2.25 * var(--u));
 	color: #d7deea;
 	text-shadow: 0 0 8px rgba(215, 222, 234, 0.4);
 	white-space: nowrap;
@@ -489,6 +502,12 @@ body.cursor-hidden * {
 	color: #fff;
 	border-color: #4ade80;
 }
+/* Заблокированная «Заново»: пока партнёр выбирает/смотрит рекламу — недоступна. */
+.game-btn:disabled {
+	opacity: 0.38;
+	cursor: not-allowed;
+	pointer-events: none;
+}
 .game-overlay-hint {
 	font-family: var(--font);
 	font-size: 0.7rem;
@@ -564,6 +583,41 @@ body.cursor-hidden * {
 @keyframes reviveBar {
 	from { width: 100%; }
 	to { width: 0%; }
+}
+/* Авто-перезапуск уровня (после отказа от рекламы): цифра + убывающая полоска.
+   Плавно проявляется у обоих игроков (opacity). Ширина полоски убывает за 5с
+   инлайн-transition, заданным из JS (_startAutoRestart) — красная гамма «смерти»
+   против золотой рекламной полоски. */
+.auto-restart {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+	opacity: 0;
+	transition: opacity 0.45s ease;
+}
+.auto-restart.show { opacity: 1; }
+.auto-restart-msg {
+	font-family: var(--font);
+	font-size: 0.9rem;
+	color: rgba(255, 255, 255, 0.7);
+	letter-spacing: 0.1em;
+	text-align: center;
+}
+.auto-restart-track {
+	width: 260px;
+	height: 8px;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.12);
+	overflow: hidden;
+	box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+.auto-restart-fill {
+	height: 100%;
+	width: 100%;
+	border-radius: 6px;
+	background: linear-gradient(90deg, #ff9a4a, #ff4c4c);
+	box-shadow: 0 0 12px rgba(255, 90, 60, 0.6);
 }
 /* Кнопка «Смотреть рекламу» с иконкой видео-рекламы (SVG, не эмодзи) */
 .revive-ad-btn {
@@ -1241,7 +1295,7 @@ body.cursor-hidden * {
 	font-family: 'Cinzel Decorative', serif;
 	/* Чистый vw → одинаковые пропорции на любом 16:9 (1080p/1440p/4K).
 	   5.5vw = прежний вид на 1080p (был capped на 6.6rem=105.6px=5.5vw). */
-	font-size: 5.5vw;
+	font-size: calc(5.5 * var(--u));
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	color: #fff;
@@ -1288,7 +1342,7 @@ body.cursor-hidden * {
 	font-family: var(--font);
 	/* Чистый vw → одинаково на любом 16:9 (1.125vw = прежний capped 1.35rem=21.6px на 1080p).
 	   Базовый размер для кнопок настроек/паузы/лобби; главное меню перебивает в #main-nav. */
-	font-size: 1.125vw;
+	font-size: calc(1.125 * var(--u));
 	letter-spacing: 0.12em;
 	padding: 0.52vw 3.13vw;
 	cursor: pointer;
@@ -1299,7 +1353,7 @@ body.cursor-hidden * {
 }
 /* Кнопки главного меню — чистый vw (1.583vw = прежний вид на 1080p, был capped 1.9rem=30.4px) */
 #main-nav .menu-item {
-	font-size: 1.583vw;
+	font-size: calc(1.583 * var(--u));
 	padding: 0.73vw 4.38vw;
 }
 #main-nav {
@@ -1354,7 +1408,7 @@ body.cursor-hidden * {
 	position: fixed;
 	bottom: 1.25vw;
 	left: 1.67vw;
-	font-size: 0.625vw;
+	font-size: calc(0.625 * var(--u));
 	color: var(--text-dim);
 	opacity: 0.5;
 }
@@ -1369,7 +1423,7 @@ body.cursor-hidden * {
 }
 .settings-title {
 	font-family: 'Cinzel Decorative', serif;
-	font-size: 2.5vw;
+	font-size: calc(2.5 * var(--u));
 	color: #fff;
 	text-shadow:
 		0 0 20px rgba(255, 255, 255, 0.5),
@@ -1390,7 +1444,7 @@ body.cursor-hidden * {
 	justify-content: space-between;
 	padding: 1.15vw 0;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-	font-size: 1.17vw;
+	font-size: calc(1.17 * var(--u));
 	letter-spacing: 0.05em;
 }
 .settings-row:last-child {
@@ -1413,7 +1467,7 @@ body.cursor-hidden * {
 	padding: 0.36vw 1.04vw;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.875vw;
+	font-size: calc(0.875 * var(--u));
 	transition: border-color 0.2s;
 }
 .lang-btn.active {
@@ -1444,7 +1498,7 @@ input[type='range']::-webkit-slider-thumb {
 	text-align: right;
 	color: var(--gold);
 	text-shadow: 0 0 10px rgba(200, 169, 110, 0.5);
-	font-size: 0.917vw;
+	font-size: calc(0.917 * var(--u));
 }
 
 .default-btn {
@@ -1458,7 +1512,7 @@ input[type='range']::-webkit-slider-thumb {
 	padding: 0.47vw 1.46vw;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.875vw;
+	font-size: calc(0.875 * var(--u));
 	letter-spacing: 0.08em;
 	transition:
 		border-color 0.2s,
@@ -1476,7 +1530,7 @@ input[type='range']::-webkit-slider-thumb {
 	justify-content: space-between;
 	padding: 0.78vw 0;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-	font-size: 1.083vw;
+	font-size: calc(1.083 * var(--u));
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
@@ -1494,7 +1548,7 @@ input[type='range']::-webkit-slider-thumb {
 	cursor: pointer;
 	min-width: 5.73vw;
 	text-align: center;
-	font-size: 0.833vw;
+	font-size: calc(0.833 * var(--u));
 	transition: border-color 0.2s;
 }
 .keybind-key:hover {
@@ -1523,7 +1577,7 @@ select.settings-select {
 	font-family: var(--font);
 	padding: 0.31vw 0.625vw;
 	border-radius: 6px;
-	font-size: 0.833vw;
+	font-size: calc(0.833 * var(--u));
 	cursor: pointer;
 }
 /* Выпадающий список рисуется системно — тёмный фон только у опций,
@@ -1542,7 +1596,7 @@ select.settings-select option {
 	padding: 0.31vw 0.94vw;
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 0.875vw;
+	font-size: calc(0.875 * var(--u));
 	transition: all 0.2s;
 }
 .toggle-btn.on {
@@ -1893,7 +1947,7 @@ select.settings-select option {
 	display: flex;
 	align-items: center;
 	gap: 0.625vw;
-	font-size: 2.25vw;
+	font-size: calc(2.25 * var(--u));
 }
 .server-name-text {
 	color: #fff;
@@ -1934,7 +1988,7 @@ select.settings-select option {
 	font-family: var(--font);
 	padding: 0.21vw 0.625vw;
 	border-radius: 6px;
-	font-size: 1.17vw;
+	font-size: calc(1.17 * var(--u));
 	outline: none;
 	letter-spacing: 0.08em;
 }
@@ -1943,7 +1997,7 @@ select.settings-select option {
 }
 
 .level-select-hint {
-	font-size: 1.33vw;
+	font-size: calc(1.33 * var(--u));
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 	letter-spacing: 0.08em;
@@ -1963,7 +2017,7 @@ select.settings-select option {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	font-size: 1.25vw;
+	font-size: calc(1.25 * var(--u));
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 	letter-spacing: 0.1em;
@@ -2063,7 +2117,7 @@ select.settings-select option {
 	border: 3px solid var(--border);
 	background: none;
 	transition: all 0.2s;
-	font-size: 0.833vw;
+	font-size: calc(0.833 * var(--u));
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
@@ -2095,7 +2149,7 @@ select.settings-select option {
 	text-shadow: none;
 }
 .level-card.coming-soon .level-soon {
-	font-size: 0.57vw;
+	font-size: calc(0.57 * var(--u));
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	color: var(--gold);
@@ -2113,7 +2167,7 @@ select.settings-select option {
 	border: 1px solid rgba(200, 169, 110, 0.7);
 	color: #fff;
 	font-family: var(--font);
-	font-size: 0.72vw;
+	font-size: calc(0.72 * var(--u));
 	letter-spacing: 0.08em;
 	padding: 0.4vw 0.7vw;
 	border-radius: 6px;
@@ -2128,11 +2182,11 @@ select.settings-select option {
 	box-shadow: 0 0 16px rgba(200, 169, 110, 0.3);
 }
 .level-num {
-	font-size: 1.583vw;
+	font-size: calc(1.583 * var(--u));
 	font-weight: 600;
 }
 .level-lock {
-	font-size: 1.17vw;
+	font-size: calc(1.17 * var(--u));
 	color: #fff;
 	text-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
 }
@@ -2146,7 +2200,7 @@ select.settings-select option {
 	padding: 0.73vw 3.75vw;
 	border-radius: 8px;
 	cursor: pointer;
-	font-size: 1.125vw;
+	font-size: calc(1.125 * var(--u));
 	letter-spacing: 0.15em;
 	transition: all 0.2s;
 }
@@ -2189,7 +2243,7 @@ select.settings-select option {
 }
 .pause-title {
 	font-family: 'Cinzel Decorative', serif;
-	font-size: 2.167vw;
+	font-size: calc(2.167 * var(--u));
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	color: #fff;
