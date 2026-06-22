@@ -112,7 +112,17 @@ function _doStartGame(levelId, role) {
     // Restart existing Phaser instance with new scene data
     const gs = _game.scene.getScene('GameScene')
     if (gs && gs.scene.isActive()) {
-      gs.scene.restart({ levelId, role })
+      // Игрок мог выйти из уровня (смерть-экран → «Выйти в меню») долей секунды
+      // раньше: его scene.stop() ещё лежит в очереди Phaser (start/stop/restart
+      // обрабатываются на СЛЕДУЮЩЕМ шаге лупа, не сразу). Если restart() вызвать
+      // прямо здесь, он встанет в очередь ПЕРЕД ещё не обработанным stop() того
+      // же экземпляра сцены → shutdown() не успевает погасить таймер авто-
+      // перезапуска (_autoRestartInterval), и тот продолжает тикать поверх уже
+      // новой сессии на осиротевшем DOM (залипший «Вы погибли» с мёртвыми
+      // кнопками). Чистим таймер вручную как страховку + даём очереди стечь.
+      gs._clearAutoRestart?.()
+      if (gs._reviveTimer) { clearTimeout(gs._reviveTimer); gs._reviveTimer = null }
+      setTimeout(() => gs.scene.restart({ levelId, role }), 50)
     } else {
       _game.scene.stop('GameScene')
       _game.scene.stop('PreloadScene')

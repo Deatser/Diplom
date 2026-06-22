@@ -167,6 +167,12 @@ export class GameScene extends Phaser.Scene {
 		// Гасим звуки предыдущей сессии — init() вызывается при любом переходе (restart/stop+start)
 		this.sound?.stopByKey('rain-amb')
 		this.sound?.stopByKey('lamp-hum')
+		// Страховка от гонки restart()/shutdown(): если предыдущая сессия этого же
+		// экземпляра сцены не успела погасить таймер авто-перезапуска смерти (см.
+		// комментарий в GameManager._doStartGame), глушим его здесь — до того как
+		// он успеет потикать поверх новой сессии и оставить «залипший» экран смерти.
+		this._clearAutoRestart?.()
+		if (this._reviveTimer) { clearTimeout(this._reviveTimer); this._reviveTimer = null }
 		const src = data && data.levelId ? data : window.__l2s || {}
 		this.levelId = src.levelId || 1
 		this.role = src.role || 'host'
@@ -230,6 +236,13 @@ export class GameScene extends Phaser.Scene {
 	create() {
 		// Hollow Knight: в геймплее курсор скрыт (важно при рестарте после смерти)
 		setCursorHidden(true)
+
+		// Страховка: безусловно убрать любые осиротевшие полноэкранные оверлеи
+		// (экран смерти/«Второй шанс»/конец уровня) от предыдущей сессии, если
+		// shutdown() не успел их снять до этого create() (гонка restart()).
+		// Иначе залипший экран смерти с мёртвыми кнопками виден поверх нового
+		// уровня. Безопасно: легитимные оверлеи создаются заново только когда нужно.
+		document.querySelectorAll('#hud-overlay .game-fullscreen-overlay').forEach(el => el.remove())
 		// ── Диагностика: перехват любых необработанных ошибок → в терминал (tlog).
 		// Иначе крэш при сборке уровня уходит только в браузерную консоль.
 		if (!window.__l2sErrHook) {
@@ -619,6 +632,27 @@ export class GameScene extends Phaser.Scene {
 				saveSessionPlaytime()
 				this.scene.stop()
 				exitToLevelSelect()
+			}),
+		)
+
+		// Партнёр пропал НЕ через кнопку «Выйти» (закрыл вкладку/обновил страницу) —
+		// game:exit в этом случае не приходит вообще, а персонаж партнёра должен просто
+		// замереть на месте (см. систему реджойна) — НЕ выкидываем живого игрока с
+		// уровня. Но если мы ЖДЁМ решения партнёра о рекламе (его экран мёртв/решает),
+		// это решение теперь никогда не придёт по сети → синтезируем «отказ», чтобы не
+		// залипнуть навсегда на заблокированной кнопке/бесконечном ожидании.
+		this._netUnsub.push(
+			networkClient.on('room:playerLeft', () => {
+				console.log('[GameScene] Partner disconnected')
+				if (this._selfDead && this._partnerDead && !this._partnerDeclined && !this._partnerRevived) {
+					this._partnerDeclined = true
+					this._resolveBothDead()
+				} else if (this._partnerDead && !this._selfDead) {
+					if (this._partnerSubEl) this._partnerSubEl.style.display = 'none'
+					if (this._partnerRestartBtn) this._partnerRestartBtn.disabled = false
+					if (this._partnerCounterEl)
+						this._startAutoRestart(this._partnerCounterEl, this.role === 'host')
+				}
 			}),
 		)
 
