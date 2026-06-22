@@ -1559,6 +1559,20 @@ input[type='range']::-webkit-slider-thumb {
 	color: #4488ff;
 	animation: pulse 0.8s infinite;
 }
+/* Правая часть строки привязки: закреплённая клавиша (ESC) + перепривязываемая кнопка. */
+.keybind-keys {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45em;
+}
+.keybind-fixed {
+	font-family: monospace;
+	color: rgba(255, 255, 255, 0.55);
+	border: 2px solid rgba(255, 255, 255, 0.18);
+	border-radius: 4px;
+	padding: 0.26vw 0.6vw;
+	white-space: nowrap;
+}
 @keyframes pulse {
 	0%,
 	100% {

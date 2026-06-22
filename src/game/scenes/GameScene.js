@@ -812,10 +812,19 @@ export class GameScene extends Phaser.Scene {
 			}),
 		)
 
-		// Menu key (tilde/ё by default, rebindable) → toggle pause
+		// Пауза по ДВУМ клавишам: ESC (всегда) + назначаемая menu-клавиша (по умолч. ~/ё).
+		// togglePause сам открывает/закрывает → повторное нажатие любой из них закрывает.
 		const menuCode = SaveSystem.getSettings().keybindings.menu || 'Backquote'
 		this.input.keyboard.on('keydown', event => {
-			if (event.code === menuCode && !this._exiting) togglePause(this)
+			if (event.code !== 'Escape' && event.code !== menuCode) return
+			if (this._exiting) return
+			// Если игра «на паузе», но само меню паузы НЕ показано — значит открыт
+			// под-экран (настройки): его обработчик сам разрулит ESC, мы не вмешиваемся
+			// (иначе ESC сработал бы дважды).
+			const pauseEl = document.getElementById('pause-menu')
+			const pauseOpen = pauseEl && !pauseEl.classList.contains('hidden')
+			if (this._gamePaused && !pauseOpen) return
+			togglePause(this)
 		})
 
 		if (this.orb) {
@@ -2177,15 +2186,24 @@ export class GameScene extends Phaser.Scene {
 		// и не слишком грубо), при этом пиксель-арт-ступеньки остаются заметными.
 		const BLOCK = Math.max(2, Math.round(targetR / 8))
 		const draw = r => {
-			// Живой центр: если задан centerFn (круг должен следовать за текстом) —
-			// берём его экранную позицию КАЖДЫЙ кадр. Канвас 1:1 с вьюпортом, поэтому
-			// центр круга гарантированно совпадает с центром текста при любом смещении
-			// экрана/движении камеры. Иначе — фиксированные cx,cy (обратная диафрагма).
-			if (centerFn) { const c = centerFn(); if (c) { cx = c.x; cy = c.y } }
-			// Сетка ВЫРОВНЕНА ПО ЦЕНТРУ (cx,cy): один пиксель центрируется ровно на нём,
+			// Живой центр: если задан centerFn (круг следует за текстом) — берём его
+			// ВЬЮПОРТНУЮ позицию каждый кадр; иначе фиксированные cx,cy (обратная диафрагма).
+			let vx = cx, vy = cy
+			if (centerFn) { const c = centerFn(); if (c) { vx = c.x; vy = c.y } }
+			// КЛЮЧЕВОЕ: переводим вьюпортные координаты во ВНУТРЕННИЕ координаты канваса
+			// через его собственный rect. Канвас не всегда 1:1 с вьюпортом (смещён/
+			// масштабирован: реклама сбоку, не фуллскрин, трансформ предка) — без этого
+			// перевода центр круга уезжал в сторону от текста. Теперь ложится точно.
+			const cr = cv.getBoundingClientRect()
+			const kx = cr.width ? W / cr.width : 1
+			const ky = cr.height ? H / cr.height : 1
+			const lx = (vx - cr.left) * kx
+			const ly = (vy - cr.top) * ky
+			const lr = r * kx // радиус в тех же внутренних единицах
+			// Сетка ВЫРОВНЕНА ПО ЦЕНТРУ (lx,ly): один пиксель центрируется ровно на нём,
 			// остальные симметричны → круг одинаков со всех сторон (без перекоса).
-			const offX = (((cx - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
-			const offY = (((cy - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
+			const offX = (((lx - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
+			const offY = (((ly - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
 			ctx.clearRect(0, 0, W, H)
 			// Фон — СПЛОШНОЙ чёрный.
 			ctx.globalCompositeOperation = 'source-over'
@@ -2195,15 +2213,15 @@ export class GameScene extends Phaser.Scene {
 			// ПОЛНОСТЬЮ внутри круга (его самый дальний угол в радиусе) → диск вписан, без
 			// торчащих одиночных блоков-«носов» по краям, силуэт ровный. Вокруг — сплошная чернота.
 			ctx.globalCompositeOperation = 'destination-out'
-			const r2 = r * r
+			const r2 = lr * lr
 			for (let by = offY - BLOCK; by < H; by += BLOCK) {
 				// fy — расстояние до дальнего по Y угла блока от центра.
-				const fy = Math.max(Math.abs(by - cy), Math.abs(by + BLOCK - cy))
+				const fy = Math.max(Math.abs(by - ly), Math.abs(by + BLOCK - ly))
 				const span = r2 - fy * fy
 				if (span <= 0) continue
 				const hw = Math.sqrt(span) // макс. допустимое расстояние дальнего угла по X
 				for (let bx = offX - BLOCK; bx < W; bx += BLOCK) {
-					const fx = Math.max(Math.abs(bx - cx), Math.abs(bx + BLOCK - cx))
+					const fx = Math.max(Math.abs(bx - lx), Math.abs(bx + BLOCK - lx))
 					// Координаты ОКРУГЛЯЕМ до целых пикселей: соседние вырезанные блоки тогда
 					// стыкуются ровно по границе пикселя, без сглаживания → нет полупрозрачных
 					// швов-сетки поверх открытой области (BLOCK целый, шаг целый → стык впритык).

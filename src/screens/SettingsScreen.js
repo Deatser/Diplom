@@ -82,6 +82,7 @@ export class SettingsScreen {
   }
 
   _onKeyDown(e) {
+    if (this._listening) return // идёт перепривязка — клавишу перехватывает rebind-handler
     const menuKey = SaveSystem.getSettings().keybindings.menu || 'Backquote'
     if (e.code === menuKey || e.key === 'Escape') {
       if (this._state === 'section') {
@@ -182,11 +183,16 @@ export class SettingsScreen {
   }
 
   _keyboardHTML(s) {
-    return KEYBIND_KEYS.map(k => `
+    return KEYBIND_KEYS.map(k => {
+      // У «Меню» клавиша ESC закреплена ВСЕГДА (хардкод); кнопка перепривязывает
+      // ДОПОЛНИТЕЛЬНУЮ клавишу (по умолч. ~/ё) — её можно сменить на любую.
+      const fixed = k === 'menu' ? `<span class="keybind-fixed">ESC +</span>` : ''
+      return `
       <div class="keybind-row">
         <span>${i18n.t(`key.${k}`)}</span>
-        <button class="keybind-key" data-bind="${k}">${this._keyName(s.keybindings[k])}</button>
-      </div>`).join('') +
+        <span class="keybind-keys">${fixed}<button class="keybind-key" data-bind="${k}">${this._keyName(s.keybindings[k])}</button></span>
+      </div>`
+    }).join('') +
       `<button class="default-btn" data-default="keyboard" style="margin-top:0.83vw">${i18n.t('settings.default')}</button>`
   }
 
@@ -260,15 +266,22 @@ export class SettingsScreen {
     // Keybindings
     this.panel.querySelectorAll('[data-bind]').forEach(btn => {
       btn.onclick = () => {
+        this._listening = true // не даём _onKeyDown закрыть настройки во время прослушивания
         btn.classList.add('listening')
         btn.textContent = '...'
         const handler = (e) => {
           e.preventDefault()
+          window.removeEventListener('keydown', handler)
+          this._listening = false
+          btn.classList.remove('listening')
+          // ESC закреплён за «Меню» и служит отменой перепривязки — его не назначаем.
+          if (e.code === 'Escape') {
+            btn.textContent = this._keyName(s.keybindings[btn.dataset.bind])
+            return
+          }
           s.keybindings[btn.dataset.bind] = e.code
           SaveSystem.setSettings(s)
-          btn.classList.remove('listening')
           btn.textContent = this._keyName(e.code)
-          window.removeEventListener('keydown', handler)
         }
         window.addEventListener('keydown', handler)
       }
