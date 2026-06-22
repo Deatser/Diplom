@@ -2160,7 +2160,7 @@ export class GameScene extends Phaser.Scene {
 	// Создаёт canvas-диафрагму с фикс. центром (cx,cy) экранных px. draw(r) заливает экран
 	// сплошным чёрным и вырезает ПИКСЕЛЬНЫЙ круг радиуса r. targetR — радиус, на котором круг
 	// «держится» (вмещает надпись): по нему подбирается размер пикселя. Возвращает {cv,draw,sf,bigR}.
-	_createIris(cx, cy, targetR = 120) {
+	_createIris(cx, cy, targetR = 120, centerFn = null) {
 		const W = window.innerWidth
 		const H = window.innerHeight
 		const cv = document.createElement('canvas')
@@ -2176,11 +2176,16 @@ export class GameScene extends Phaser.Scene {
 		// имел ~8 пикселей радиуса: достаточно квадратов для узнаваемо круглого края (не «ромб»
 		// и не слишком грубо), при этом пиксель-арт-ступеньки остаются заметными.
 		const BLOCK = Math.max(2, Math.round(targetR / 8))
-		// Сетка ВЫРОВНЕНА ПО ЦЕНТРУ (cx,cy): один пиксель центрируется ровно на нём, остальные
-		// симметричны → круг одинаков сверху/снизу/слева/справа (без перекоса).
-		const offX = (((cx - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
-		const offY = (((cy - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
 		const draw = r => {
+			// Живой центр: если задан centerFn (круг должен следовать за текстом) —
+			// берём его экранную позицию КАЖДЫЙ кадр. Канвас 1:1 с вьюпортом, поэтому
+			// центр круга гарантированно совпадает с центром текста при любом смещении
+			// экрана/движении камеры. Иначе — фиксированные cx,cy (обратная диафрагма).
+			if (centerFn) { const c = centerFn(); if (c) { cx = c.x; cy = c.y } }
+			// Сетка ВЫРОВНЕНА ПО ЦЕНТРУ (cx,cy): один пиксель центрируется ровно на нём,
+			// остальные симметричны → круг одинаков со всех сторон (без перекоса).
+			const offX = (((cx - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
+			const offY = (((cy - BLOCK / 2) % BLOCK) + BLOCK) % BLOCK
 			ctx.clearRect(0, 0, W, H)
 			// Фон — СПЛОШНОЙ чёрный.
 			ctx.globalCompositeOperation = 'source-over'
@@ -2233,7 +2238,14 @@ export class GameScene extends Phaser.Scene {
 		const rect = this.game.canvas.getBoundingClientRect()
 		const sf0 = this.cameras.main.zoom * (rect.width / this.game.config.width)
 		const smallR = Math.max(56 * sf0, fitR) - 8 * sf0 // вместить надпись, минус полтайла
-		const iris = this._createIris(cx, cy, smallR)
+		// Круг следует за фактической надписью КАЖДЫЙ кадр → его центр всегда в центре
+		// текста, как бы ни был смещён экран (реклама сбоку, окно не на весь экран) и
+		// как бы ни двигалась камера/текст в катсцене.
+		const titleCenter = () => {
+			const r = this._titleLineEl?.getBoundingClientRect()
+			return (r && r.width) ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null
+		}
+		const iris = this._createIris(cx, cy, smallR, titleCenter)
 		this._irisEl = iris.cv
 		// Надпись уже запущена в _startLevelEndCutscene; держим её поверх диафрагмы.
 		const proxy = { r: iris.bigR }

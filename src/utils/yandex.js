@@ -18,13 +18,16 @@ export async function initYandex() {
   }
 }
 
-// Язык платформы Яндекса ('ru'/'en'), если он один из поддерживаемых нами. Иначе null.
-// Нужен, чтобы при первом заходе показать игру на языке игрока (требует модерация).
+// Язык платформы из SDK. Требование модерации Яндекса: язык игры управляется через
+// SDK и определяется НА ЗАПУСКЕ из ysdk.environment.i18n.lang (на каждом заходе).
+// Поддерживаем ru/en: 'ru' → ru; всё прочее (en и любой неподдерживаемый язык) → en
+// как международный резерв. Вне Яндекса (ysdk нет) → null, чтобы не перебивать выбор
+// игрока в standalone/Render-сборке. Само чтение i18n.lang включает индикатор «文».
 export function getPlatformLang() {
-  try {
-    const l = ysdk?.environment?.i18n?.lang
-    return (l === 'ru' || l === 'en') ? l : null
-  } catch { return null }
+  if (!ysdk) return null
+  let l = null
+  try { l = ysdk.environment?.i18n?.lang } catch {}
+  return l === 'ru' ? 'ru' : 'en'
 }
 
 // Сообщить платформе, что игра загрузилась и готова к показу (убирает их спиннер).

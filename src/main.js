@@ -129,21 +129,17 @@ export function hideAllForGame() {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'))
 }
 
-// Выбирал ли игрок язык сам (есть сохранённое значение)? Если да — не перебиваем
-// его языком платформы при следующих заходах.
-function hasSavedLang() {
-  try { if (JSON.parse(localStorage.getItem('l2s_settings'))?.lang) return true } catch {}
-  return !!localStorage.getItem('l2s_lang')
-}
-
 function init() {
   // Yandex Games SDK: инициализируем и сообщаем платформе о готовности (убрать спиннер).
   // Вне Яндекса оба вызова — пустышки, игра запускается как обычно.
-  initYandex().then(() => {
-    // При ПЕРВОМ заходе (игрок ещё не выбирал язык сам) показываем игру на языке
-    // платформы — этого требует модерация Яндекса. Дальше работает выбор в настройках.
-    if (!hasSavedLang()) {
-      const pl = getPlatformLang()
+  initYandex().then((sdk) => {
+    // Требование модерации Яндекса: язык управляется платформой через SDK. На КАЖДОМ
+    // запуске берём язык из ysdk.environment.i18n.lang и переключаем весь UI. Модерация
+    // проверяет каждый заявленный язык отдельными загрузками, поэтому ПЕРЕКРЫВАЕМ
+    // сохранённый выбор (иначе второй язык не применится). Вне Яндекса (sdk нет) —
+    // уважаем выбор игрока в настройках (standalone/Render).
+    if (sdk) {
+      const pl = getPlatformLang() // 'ru' | 'en' (резерв для неподдерживаемых)
       if (pl && pl !== i18n.lang) i18n.setLang(pl)
     }
     yandexReady()
