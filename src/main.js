@@ -16,6 +16,7 @@ import { LevelSelectScreen } from './screens/LevelSelectScreen.js'
 import MusicManager from './systems/MusicManager.js'
 import Sfx from './systems/Sfx.js'
 import { initYandex, yandexReady, getPlatformLang } from './utils/yandex.js'
+import { startGame } from './game/GameManager.js'
 
 const MENU_MUSIC = 'assets/audio/Main%20Theme.mp3'
 const screens = {}
@@ -207,8 +208,18 @@ function init() {
     showScreen('level-select', { roomId, roomName: name, role: 'host', maxLevel })
   })
 
-  // Guest: joined room → go to level select (use room name + level + selectedLevel from server)
-  networkClient.on('playerJoined', ({ role, roomId, name, level, selectedLevel }) => {
+  // playerJoined. Если сервер прислал rejoin=true (комната ещё играет) — это ВОЗВРАТ
+  // в живую игру: сразу в GameScene на сохранённой позиции (телепорт), минуя выбор
+  // уровня. Работает для ЛЮБОЙ роли — и гостя, и хоста (сервер отдаёт свободный слот).
+  networkClient.on('playerJoined', ({ role, roomId, name, level, selectedLevel, rejoin }) => {
+    if (rejoin) {
+      const saved = SaveSystem.getRejoin()
+      window.__l2sRejoinPos = (saved && saved.roomId === roomId) ? saved : null
+      window.__l2s = { ...(window.__l2s || {}), roomId, roomName: name, role }
+      startGame(level || saved?.level || 1, role)
+      return
+    }
+    // Обычный заход гостя из лобби → выбор уровня (хост приходит сюда через roomCreated).
     if (role === 'guest') {
       showScreen('level-select', {
         roomId,

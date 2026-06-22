@@ -52,16 +52,36 @@ function removePlayer(socketId) {
   socketToRoom.delete(socketId)
   const room = rooms.get(roomId)
   if (!room) return
-  if (room.hostId === socketId) {
+  const wasHost = room.hostId === socketId
+  const wasGuest = room.guestId === socketId
+  if (!wasHost && !wasGuest) return
+
+  // Посреди игры (status 'playing') комнату НЕ удаляем — оставшийся игрок продолжает,
+  // вышедший замирает у него и может вернуться в СВОЙ слот (реджойн). Симметрично
+  // для хоста и гостя. Удаляем только когда из играющей комнаты вышли ОБА.
+  if (room.status === 'playing') {
+    if (wasHost) room.hostId = null
+    if (wasGuest) room.guestId = null
+    if (!room.hostId && !room.guestId) {
+      rooms.delete(roomId)
+    } else {
+      const otherId = room.hostId || room.guestId
+      io.to(otherId).emit('room:playerLeft', { socketId }) // в GameScene игнорируется (аватар замирает)
+    }
+    broadcastList()
+    return
+  }
+
+  // Вне игры (лобби / выбор уровня) — прежнее поведение:
+  if (wasHost) {
     if (room.guestId) io.to(room.guestId).emit('room:playerLeft', { reason: 'host_left' })
     rooms.delete(roomId)
-    broadcastList()
-  } else if (room.guestId === socketId) {
+  } else {
     room.guestId = null
     room.status = 'waiting'
     io.to(room.hostId).emit('room:playerLeft', { socketId })
-    broadcastList()
   }
+  broadcastList()
 }
 
 io.on('connection', socket => {
@@ -97,6 +117,23 @@ io.on('connection', socket => {
     socket.join(roomId)
     socket.emit('player:joined', { role: 'guest', roomId, name: room.name, level: room.level, selectedLevel: room.selectedLevel || room.level })
     io.to(room.hostId).emit('room:playerJoined', { guestId: socket.id })
+    broadcastList()
+  })
+
+  // Возврат в ЖИВУЮ игру (комната осталась 'playing' после выхода одного игрока).
+  // Заполняем свободный слот — роль определяется тем, кого не хватает (хост ИЛИ гость).
+  socket.on('lobby:rejoinRoom', ({ roomId }) => {
+    const room = rooms.get(roomId)
+    if (!room) { socket.emit('lobby:error', { message: 'Комната не найдена' }); return }
+    let role
+    if (!room.hostId)       { room.hostId  = socket.id; role = 'host' }
+    else if (!room.guestId) { room.guestId = socket.id; role = 'guest' }
+    else { socket.emit('lobby:error', { message: 'Комната заполнена' }); return }
+    socketToRoom.set(socket.id, roomId)
+    socket.join(roomId)
+    socket.emit('player:joined', { role, roomId, name: room.name, level: room.level, selectedLevel: room.selectedLevel || room.level, rejoin: true })
+    const otherId = role === 'host' ? room.guestId : room.hostId
+    if (otherId) io.to(otherId).emit('room:playerJoined', { socketId: socket.id })
     broadcastList()
   })
 

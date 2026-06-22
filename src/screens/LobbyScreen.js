@@ -64,30 +64,40 @@ export class LobbyScreen {
       return
     }
 
+    // Комната, из которой гость вылетел (закрыл вкладку) посреди игры — если она ещё
+    // жива и есть место, подсвечиваем её особо с подписью «Вернуться в игру».
+    const rejoin = SaveSystem.getRejoin()
+
     this.listEl.innerHTML = rooms.map(r => {
       const status   = r.status || (r.playerCount >= 2 ? 'ready' : 'waiting')
-      const canJoin  = status === 'waiting' && r.playerCount < 2
+      // «Вернуться в игру» — только если это наша комната, она ещё играет и есть место.
+      const isRejoin = !!rejoin && rejoin.roomId === r.id && r.playerCount < 2 && status === 'playing'
+      const canJoin  = isRejoin || (status === 'waiting' && r.playerCount < 2)
 
-      const statusLabel = {
-        waiting: i18n.t('lobby.status_waiting'),
-        ready:   i18n.t('lobby.status_ready'),
-        playing: i18n.t('lobby.status_playing')
-      }[status] || i18n.t('lobby.status_waiting')
+      const statusLabel = isRejoin
+        ? i18n.t('lobby.return_to_game')
+        : ({
+            waiting: i18n.t('lobby.status_waiting'),
+            ready:   i18n.t('lobby.status_ready'),
+            playing: i18n.t('lobby.status_playing')
+          }[status] || i18n.t('lobby.status_waiting'))
 
       return `
-        <div class="server-item status-${status} ${canJoin ? 'can-join' : ''}" ${canJoin ? `data-join="${r.id}"` : ''}>
+        <div class="server-item status-${status} ${isRejoin ? 'is-rejoin' : ''} ${canJoin ? 'can-join' : ''}" ${canJoin ? `data-join="${r.id}"` : ''}>
           <div class="server-item-info">
             <span class="server-item-name">${this._esc(r.name)}</span>
             <span class="server-item-meta">
               ${i18n.t('lobby.level')} ${r.level} · ${this._formatTime(r.playtime || 0)} · ${r.playerCount}/2
             </span>
-            <span class="server-item-status status-label-${status}">${statusLabel}</span>
+            <span class="server-item-status ${isRejoin ? 'status-label-rejoin' : 'status-label-' + status}">${statusLabel}</span>
           </div>
         </div>`
     }).join('')
 
     this.listEl.querySelectorAll('.server-item[data-join]').forEach(item => {
-      item.onclick = () => networkClient.joinRoom(item.dataset.join)
+      item.onclick = () => item.classList.contains('is-rejoin')
+        ? networkClient.rejoinRoom(item.dataset.join) // возврат в живую игру (свой слот)
+        : networkClient.joinRoom(item.dataset.join)
     })
   }
 

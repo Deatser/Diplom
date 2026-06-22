@@ -1782,6 +1782,28 @@ select.settings-select option {
 	cursor: default;
 }
 
+/* Комната, в которую можно ВЕРНУТЬСЯ (гость вылетел посреди игры) — яркая
+   пульсирующая подсветка поверх обычного статус-цвета, чтобы сразу бросалась в глаза. */
+.server-item.is-rejoin {
+	border-color: rgba(120, 200, 255, 0.95) !important;
+	background: rgba(120, 200, 255, 0.08);
+	opacity: 1 !important;
+	cursor: pointer;
+	animation: rejoinPulse 1.6s ease-in-out infinite;
+}
+.server-item.is-rejoin:hover {
+	border-color: rgba(165, 220, 255, 1) !important;
+	background: rgba(120, 200, 255, 0.15);
+}
+.status-label-rejoin {
+	color: rgba(150, 215, 255, 1);
+	text-shadow: 0 0 10px rgba(120, 200, 255, 0.6);
+}
+@keyframes rejoinPulse {
+	0%, 100% { box-shadow: 0 0 12px rgba(120, 200, 255, 0.35); }
+	50%      { box-shadow: 0 0 22px rgba(120, 200, 255, 0.6); }
+}
+
 .server-empty {
 	flex: 1;
 	display: flex;

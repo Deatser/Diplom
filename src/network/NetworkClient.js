@@ -90,6 +90,7 @@ class NetworkClient {
   getRooms()           { this.socket?.emit('lobby:getRooms') }
   createRoom(name, level = 1, playtime = 0) { this.socket?.emit('lobby:createRoom', { name, level, playtime }) }
   joinRoom(roomId)     { this.socket?.emit('lobby:joinRoom', { roomId }) }
+  rejoinRoom(roomId)   { this.socket?.emit('lobby:rejoinRoom', { roomId }) }
   renameRoom(name)     { this.socket?.emit('lobby:renameRoom', { roomId: this.roomId, name }) }
   sendAvatarAnim(role, cls) { if (this.roomId) this.socket?.emit('room:avatarAnim', { roomId: this.roomId, role, cls }) }
   leaveRoom()          { if (this.roomId) { this.socket?.emit('lobby:leaveRoom', { roomId: this.roomId }); this.roomId = null; this.role = null } }

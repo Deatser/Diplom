@@ -275,6 +275,8 @@ export function applyGameResolution() {
 }
 
 export function exitToLevelSelect() {
+  // Чистый выход из живой игры → больше некуда «возвращаться» (реджойн отменяем).
+  SaveSystem.clearRejoin()
   // Воркер живёт столько же, сколько _game — при выходе он больше не нужен
   if (_tickWorker) { _tickWorker.postMessage('stop'); _tickWorker = null }
   // Ядерная страховка: глушим все игровые звуки через глобальный sound manager

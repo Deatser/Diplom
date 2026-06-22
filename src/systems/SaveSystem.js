@@ -74,5 +74,11 @@ export const SaveSystem = {
 
   // Max unlocked level (persisted across sessions)
   getMaxLevel()  { return parseInt(localStorage.getItem('l2s_maxlevel') || '1') },
-  setMaxLevel(n) { localStorage.setItem('l2s_maxlevel', String(Math.max(n, this.getMaxLevel()))) }
+  setMaxLevel(n) { localStorage.setItem('l2s_maxlevel', String(Math.max(n, this.getMaxLevel()))) },
+
+  // Реджойн гостя в живую игру после закрытия вкладки: {roomId, level, x, y, abilities}.
+  // Пишется в GameScene пока гость играет, читается в лобби/при заходе в комнату.
+  getRejoin()   { try { return JSON.parse(localStorage.getItem('l2s_rejoin')) } catch { return null } },
+  setRejoin(d)  { try { localStorage.setItem('l2s_rejoin', JSON.stringify(d)) } catch {} },
+  clearRejoin() { try { localStorage.removeItem('l2s_rejoin') } catch {} }
 }

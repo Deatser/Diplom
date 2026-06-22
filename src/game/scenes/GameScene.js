@@ -193,6 +193,7 @@ export class GameScene extends Phaser.Scene {
 		this._bothDeadCounterEl = null
 		this._dashHintPos = null // точка dashhint из Tiled (подсказка деша при касании)
 		this._tutDashEl = null   // DOM-подсказка «{клавиша} Рывок»
+		this._isRejoin = false   // гость вернулся в живую игру → спавн на сохранённой позиции
 		this._deathZones = [] // зоны смерти из Tiled
 		this._deathOverlayEl = null // DOM оверлей "Вы погибли"
 		this._reviveOverlayEl = null // DOM оверлей «Второй шанс» / реклама (в #hud-overlay)
@@ -466,7 +467,16 @@ export class GameScene extends Phaser.Scene {
 		const localTex = this.role === 'host' ? 'blue-knight' : 'orange-knight'
 		const remoteTex = this.role === 'host' ? 'orange-knight' : 'blue-knight'
 
-		const spawn = this._getSpawn() // свой начальный спавн за картой (по роли)
+		// Реджойн гостя в живую игру: спавним сразу на сохранённой позиции (телепорт
+		// «куда остановился»), без катсцены входа. Совпадение по roomId обязательно.
+		const _rj = window.__l2sRejoinPos
+		const rejoin = (_rj && _rj.roomId === window.__l2s?.roomId
+			&& _rj.level === this.levelId) // уровень совпал (партнёр не ушёл вперёд один)
+			? _rj : null
+		window.__l2sRejoinPos = null
+		this._isRejoin = !!rejoin
+
+		const spawn = rejoin ? { x: rejoin.x, y: rejoin.y } : this._getSpawn() // спавн за картой (по роли) либо точка возврата
 		const rspawn = this._getRemoteSpawn() // спавн партнёра (другая роль)
 		this.localPlayer = new Player(this, spawn.x, spawn.y, localTex, true)
 		this.remotePlayer = new Player(this, rspawn.x, rspawn.y, remoteTex, false)
@@ -523,7 +533,7 @@ export class GameScene extends Phaser.Scene {
 		// setMaxSize caps the display size to the resolution from video settings
 		// При входе кадр зафиксирован на точке покоя (игрок появляется из-за левого края
 		// экрана и доходит до неё). Без входа — камера сразу на самом спавне.
-		const camAnchor = this._hasEntrance() ? this._getRestTarget() : spawn
+		const camAnchor = (!this._isRejoin && this._hasEntrance()) ? this._getRestTarget() : spawn
 		this._camTarget = { x: camAnchor.x, y: camAnchor.y }
 		// Фолбэк безопасной точки: точка покоя/спавн (на случай смерти до того, как
 		// _recordSafeGround нашёл «хорошее» место). Дальше перезаписывается в update.
@@ -600,6 +610,7 @@ export class GameScene extends Phaser.Scene {
 		this._netUnsub.push(
 			networkClient.on('game:exit', () => {
 				console.log('[GameScene] Partner exited — forcing exit')
+				window.__l2sPartnerLeft = true // экран выбора уровня покажет тост «партнёр вышел»
 				this._clearAutoRestart() // партнёр вышел во время авто-перезапуска
 				this._closeAbilityOverlay() // партнёр вышел в меню → закрыть «Открыто:» и у нас
 				// Force exit regardless of _exiting state (e.g. partner left from level-complete screen)
@@ -879,7 +890,13 @@ export class GameScene extends Phaser.Scene {
 
 		// Вход: игроки спавнятся за левой стеной и выходят на свои точки покоя —
 		// симметрично катсцене конца уровня (там уходят вправо за кадр).
-		if (this._hasEntrance()) this._startEntranceCutscene()
+		if (this._isRejoin) {
+			// Возврат в живую игру: без катсцены входа — сразу управление + восстановление
+			// способностей, которые гость имел до закрытия вкладки (деш и т.п.).
+			this._entering = false
+			this._inputLocked = false
+			for (const a of (rejoin.abilities || [])) this.localPlayer.unlock(a)
+		} else if (this._hasEntrance()) this._startEntranceCutscene()
 		else this.time.delayedCall(1100, () => this._showTutMove())
 
 		// Уровень собран → проявляем. Если пришли из финальной катсцены прошлого уровня —
@@ -1002,7 +1019,8 @@ export class GameScene extends Phaser.Scene {
 		this._botTutPressed = null // аккумулятор «бот подвигался» (см. _checkBotTutMove)
 		const fromDeath = window.__l2sFromDeath
 		window.__l2sFromDeath = false
-		if (Number(this.levelId) !== 1 || fromDeath) return
+		// Реджойн (гость вернулся в живую игру) — туториал не показываем, он уже играл.
+		if (Number(this.levelId) !== 1 || fromDeath || this._isRejoin) return
 		// Свежий заход на уровень 1 (не после смерти) → разрешаем подсказку рывка
 		// показаться один раз. На death-restart этот блок пропускается (флаг сохранён),
 		// как и WASD/взаимодействие — повторно не навязываем.
@@ -1355,6 +1373,25 @@ export class GameScene extends Phaser.Scene {
 		if (this._syncTimer >= 33) {
 			this._syncTimer = 0
 			networkClient.sendInput(this.localPlayer.getNetworkState())
+		}
+
+		// ~Раз в секунду сохраняем позицию для возможного возврата в игру после закрытия
+		// вкладки (любой игрок: оставшийся продолжит, вышедший замрёт; при перезаходе —
+		// телепорт сюда в свой слот). Не сохраняем во время смерти/выхода (чтобы не
+		// вернуть в шипы). Роль пишем тоже — сервер вернёт в нужный слот.
+		if (!this._dying && !this._exiting && window.__l2s?.roomId) {
+			this._rejoinSaveTimer = (this._rejoinSaveTimer || 0) + delta
+			if (this._rejoinSaveTimer >= 1000) {
+				this._rejoinSaveTimer = 0
+				SaveSystem.setRejoin({
+					roomId: window.__l2s.roomId,
+					role: this.role,
+					level: this.levelId,
+					x: Math.round(this.localPlayer.x),
+					y: Math.round(this.localPlayer.y),
+					abilities: [...this.localPlayer.unlockedAbilities],
+				})
+			}
 		}
 
 		// RMB special — заблокировано, когда персонажем управляет бот.

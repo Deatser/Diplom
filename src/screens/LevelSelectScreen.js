@@ -92,6 +92,13 @@ export class LevelSelectScreen {
       this._showComingSoonNotice()
     }
 
+    // Партнёр вышел в меню во время игры → нас тоже выкинуло сюда. Показываем
+    // короткое объяснение, чтобы выход не выглядел как баг (флаг ставит GameScene).
+    if (window.__l2sPartnerLeft) {
+      window.__l2sPartnerLeft = false
+      this._showInfoToast(i18n.t('ls.partner_left'))
+    }
+
     window.addEventListener('keydown', this._onKey)
 
     // ── Network listeners ──
@@ -286,6 +293,20 @@ export class LevelSelectScreen {
       toast.classList.remove('show')
       setTimeout(() => toast.remove(), 500)
     }, 5000)
+  }
+
+  // Универсальный тост сверху по центру (тот же стиль, что «ждите обновлений»).
+  _showInfoToast(text, ms = 3000) {
+    document.querySelector('.coming-soon-toast')?.remove()
+    const toast = document.createElement('div')
+    toast.className = 'coming-soon-toast'
+    toast.textContent = text
+    document.body.appendChild(toast)
+    requestAnimationFrame(() => toast.classList.add('show'))
+    setTimeout(() => {
+      toast.classList.remove('show')
+      setTimeout(() => toast.remove(), 500)
+    }, ms)
   }
 
   // Show notification when host leaves the room
